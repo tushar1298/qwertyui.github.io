@@ -4,3 +4,4 @@ psycopg2-binary
 rdkit
 py3Dmol
 openpyxl
+requests
