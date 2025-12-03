@@ -87,6 +87,12 @@ st.markdown(
         color: #222;
         font-weight: 600;
     }
+    .reference-text {
+        font-size: 0.75rem;
+        color: #999;
+        margin-left: 5px;
+        font-weight: 400;
+    }
 
     /* Status Badges */
     .badge-pass {
@@ -237,6 +243,9 @@ def compute_physchem_from_pdb(pdb_text: str) -> dict:
         props["F-Csp3"] = f"{rdMolDescriptors.CalcFractionCSP3(mol):.2f}"
         props["Lipinski Violations"] = violations
         
+        # Store Raw mol for export
+        props["_RDKitMol"] = mol
+        
     except Exception:
         pass
     return props
@@ -275,13 +284,14 @@ def show_3d_pdb(pdb_text: str, bg_color: str = "white"):
 # ----------------------------------------------------
 # Helper to render a data row
 # ----------------------------------------------------
-def render_row(label, value, help_text=None):
+def render_row(label, value, ref=None, help_text=None):
     tooltip = f'title="{help_text}"' if help_text else ''
+    ref_html = f'<span class="reference-text">({ref})</span>' if ref else ''
     st.markdown(
         f"""
         <div class="data-row" {tooltip}>
             <span class="data-label">{label}</span>
-            <span class="data-value">{value}</span>
+            <span class="data-value">{value}{ref_html}</span>
         </div>
         """, 
         unsafe_allow_html=True
@@ -300,18 +310,26 @@ with st.sidebar:
     all_pdb_files = list_pdb_files()
     metadata_df = load_metadata()
 
-    # Search & Select
-    search_query = st.text_input("🔍 Search Structure", placeholder="Search by ID (e.g., 1A2B)...")
+    # --- ENHANCED SEARCH SECTION ---
+    st.markdown("#### 🕵️ Overall Search")
+    search_query = st.text_input("Filter database:", placeholder="Enter structure ID...", label_visibility="collapsed")
     
+    # Filter Logic
     if search_query:
         pdb_files = [p for p in all_pdb_files if search_query.lower() in p.lower()]
         if not pdb_files:
             st.warning("No matches found.")
-            pdb_files = all_pdb_files
+            pdb_files = []
+        else:
+            st.success(f"Found {len(pdb_files)} structures")
     else:
         pdb_files = all_pdb_files
 
-    selected_pdb = st.selectbox("Select Structure", pdb_files, index=0 if pdb_files else None)
+    # List Display (Sidebar)
+    if pdb_files:
+        selected_pdb = st.selectbox("Select Structure Result:", pdb_files, index=0)
+    else:
+        selected_pdb = None
     
     st.divider()
     
@@ -322,11 +340,11 @@ with st.sidebar:
 
     st.divider()
     st.caption(f"**Total Entries:** {len(all_pdb_files)}")
-    st.caption("v1.2.0 • Powered by RDKit & Py3Dmol")
+    st.caption("v1.3.0 • Powered by RDKit & Py3Dmol")
 
 # 2. MAIN AREA
 if not selected_pdb:
-    st.info("👈 Please select a structure from the sidebar to begin analysis.")
+    st.info("👈 Please search for or select a structure from the sidebar.")
 else:
     pdb_text = fetch_pdb_from_github(selected_pdb)
 
@@ -337,18 +355,51 @@ else:
         # Main Layout: 3 Columns
         col_viewer, col_preds, col_meta = st.columns([2.2, 0.9, 0.9])
 
-        # --- COLUMN 1: 3D VIEWER ---
+        # --- COLUMN 1: 3D VIEWER & DOWNLOADS ---
         with col_viewer:
             st.subheader(f"3D Visualization: {selected_pdb}")
             show_3d_pdb(pdb_text, bg_color)
             
-            # Download Button below viewer
-            st.download_button(
-                label="📥 Download PDB File",
-                data=pdb_text,
-                file_name=selected_pdb,
-                mime="chemical/x-pdb"
-            )
+            # --- DOWNLOAD OPTIONS ---
+            st.markdown("##### 📥 Export Data")
+            d1, d2, d3 = st.columns(3)
+            
+            # 1. PDB Download
+            with d1:
+                st.download_button(
+                    label="Download .PDB",
+                    data=pdb_text,
+                    file_name=selected_pdb,
+                    mime="chemical/x-pdb",
+                    use_container_width=True
+                )
+            
+            # 2. SDF Download (Convert on fly)
+            mol_obj = physchem.get("_RDKitMol")
+            if mol_obj:
+                sdf_data = Chem.MolToMolBlock(mol_obj) # V2000 mol block standard
+                with d2:
+                    st.download_button(
+                        label="Download .SDF",
+                        data=sdf_data,
+                        file_name=selected_pdb.replace('.pdb', '.sdf'),
+                        mime="chemical/x-mdl-sdfile",
+                        use_container_width=True
+                    )
+                with d3:
+                    st.download_button(
+                        label="Download .MOL",
+                        data=sdf_data,
+                        file_name=selected_pdb.replace('.pdb', '.mol'),
+                        mime="chemical/x-mdl-molfile",
+                        use_container_width=True
+                    )
+            else:
+                with d2:
+                    st.button("SDF Unavail.", disabled=True, use_container_width=True)
+                with d3:
+                    st.button("MOL Unavail.", disabled=True, use_container_width=True)
+
 
         # --- COLUMN 2: SCIENTIFIC PREDICTIONS ---
         with col_preds:
@@ -365,7 +416,7 @@ else:
                 render_row("Stereocenters", physchem.get("Chiral Centers", "0"))
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                # 2. Lipinski Rules
+                # 2. Lipinski Rules with REFERENCE DATA
                 violations = physchem.get("Lipinski Violations", 0)
                 badge_class = "badge-pass" if violations == 0 else "badge-fail"
                 badge_text = "PASS (0 Violations)" if violations == 0 else f"FAIL ({violations} Violations)"
@@ -377,10 +428,14 @@ else:
                         <span class="{badge_class}">{badge_text}</span>
                     </div>
                 """, unsafe_allow_html=True)
-                render_row("LogP", physchem.get("LogP", "-"))
-                render_row("H-Donors", physchem.get("H-Don", "-"))
-                render_row("H-Acceptors", physchem.get("H-Acc", "-"))
-                render_row("Rot. Bonds", physchem.get("Rot. Bonds", "-"))
+                
+                # Added References here
+                render_row("LogP", physchem.get("LogP", "-"), ref="≤ 5")
+                render_row("H-Donors", physchem.get("H-Don", "-"), ref="≤ 5")
+                render_row("H-Acceptors", physchem.get("H-Acc", "-"), ref="≤ 10")
+                render_row("Rot. Bonds", physchem.get("Rot. Bonds", "-")) # RB often cited as <= 10 but not strictly Ro5
+                render_row("Mol Weight", f"{physchem.get('Mol Wt', '-')} da", ref="≤ 500")
+                
                 st.markdown('</div>', unsafe_allow_html=True)
 
                 # 3. Druglikeness
