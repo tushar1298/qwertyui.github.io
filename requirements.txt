@@ -5,3 +5,4 @@ rdkit
 py3Dmol
 openpyxl
 requests
+biopython
