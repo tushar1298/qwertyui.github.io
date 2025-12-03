@@ -203,22 +203,38 @@ if selected_pdb:
         # 3D viewer card
         with left:
             st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown(f"#### 3D Structure &nbsp;·&nbsp; `{selected_pdb}`")
+            st.markdown(f"#### 3D Structure · `{selected_pdb}`")
             show_3d_pdb(pdb_text)
             st.markdown("</div>", unsafe_allow_html=True)
 
-        # Metadata card
+        # Metadata card (VERTICAL VIEW)
         with right:
             st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown("#### Metadata")
+            st.markdown("#### Metadata (Details)")
 
             if metadata_df.empty:
                 st.info("No metadata file loaded.")
             else:
                 row = find_metadata(metadata_df, selected_pdb)
-                if row is None:
+
+                if row is None or row.empty:
                     st.info("No metadata found for this entry.")
                 else:
-                    st.dataframe(row.reset_index(drop=True), use_container_width=True)
+                    meta_dict = row.iloc[0].to_dict()
+
+                    # Show each field vertically as key : value
+                    for key, value in meta_dict.items():
+                        pretty_key = str(key).replace("_", " ").title()
+                        st.markdown(
+                            f"""
+                            <div style="margin-bottom:0.5rem;">
+                                <span style="font-weight:600; color:#374151;">{pretty_key}:</span><br>
+                                <span style="color:#111827; word-wrap:break-word; font-size:0.92rem;">
+                                    {value}
+                                </span>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
 
             st.markdown("</div>", unsafe_allow_html=True)
