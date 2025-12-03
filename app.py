@@ -9,25 +9,25 @@ import pandas as pd
 GITHUB_API_URL = "https://api.github.com/repos/tushar1298/qwertyui/contents"
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com/tushar1298/qwertyui/main/"
 
-# CHANGE THIS if your metadata filename is different
+# 👉 YOUR metadata file name here:
 METADATA_URL = "https://raw.githubusercontent.com/tushar1298/qwertyui/main/NucLigs_data_2811.xlsx"
-# If you use CSV instead, e.g. metadata.csv, just change the extension and it will work.
 
 
 # ----------------------------------------------------
-# Helper: list all PDB files in the GitHub repo
+# Load PDB list from GitHub
 # ----------------------------------------------------
 @st.cache_data
 def list_pdb_files():
     r = requests.get(GITHUB_API_URL)
     r.raise_for_status()
     files = r.json()
-    pdb_files = [f["name"] for f in files if isinstance(f, dict) and f.get("name", "").endswith(".pdb")]
+    pdb_files = [f["name"] for f in files 
+                 if isinstance(f, dict) and f.get("name", "").endswith(".pdb")]
     return sorted(pdb_files)
 
 
 # ----------------------------------------------------
-# Helper: fetch a PDB file from GitHub
+# Fetch PDB text from GitHub
 # ----------------------------------------------------
 def fetch_pdb_from_github(filename: str) -> str | None:
     url = f"{GITHUB_RAW_BASE}{filename}"
@@ -44,108 +44,89 @@ def fetch_pdb_from_github(filename: str) -> str | None:
 
 
 # ----------------------------------------------------
-# Helper: show PDB in 3D stick format
+# 3D Viewer
 # ----------------------------------------------------
 def show_3d_pdb(pdb_text: str):
-    view = py3Dmol.view(width=500, height=500)
+    view = py3Dmol.view(width=550, height=550)
     view.addModel(pdb_text, "pdb")
     view.setStyle({"stick": {}})
     view.zoomTo()
     html = view._make_html()
-    st.components.v1.html(html, height=520)
+    st.components.v1.html(html, height=560)
 
 
 # ----------------------------------------------------
-# Load metadata from Excel / CSV in GitHub
+# Load metadata from excel
 # ----------------------------------------------------
 @st.cache_data
 def load_metadata():
-    # Decide based on file extension
-    if METADATA_URL.endswith(".csv"):
-        df = pd.read_csv(METADATA_URL)
-    else:
-        df = pd.read_excel(METADATA_URL)
-    # Normalize column names to lowercase for easier matching
-    df.columns = [c.strip().lower() for c in df.columns]
+    df = pd.read_excel(METADATA_URL)
+    df.columns = [c.strip().lower() for c in df.columns]   # normalize column names
     return df
 
 
-def find_metadata_for_pdb(df: pd.DataFrame, pdb_filename: str) -> pd.DataFrame | None:
+# ----------------------------------------------------
+# Match metadata using "pdbs" column
+# ----------------------------------------------------
+def find_metadata(metadata_df, pdb_filename):
     """
-    Try to match the selected pdb file with a row in metadata.
-
-    We try these possibilities:
-      - column 'pdb_file' equals 'name.pdb'
-      - column 'file_name' / 'filename' equals 'name.pdb'
-      - column 'pdb' or 'pdb_id' equals 'name' (without .pdb)
+    metadata column: 'pdbs'
+    content example: 'A1.pdb' or just 'A1'
     """
-    fname = pdb_filename.strip()
-    root = fname[:-4] if fname.lower().endswith(".pdb") else fname
+    pdb_filename = pdb_filename.strip()
+    pdb_root = pdb_filename.replace(".pdb", "").strip()
 
-    candidates = []
+    col = "pdbs"
+    if col not in metadata_df.columns:
+        st.error("❌ Column 'pdbs' not found in metadata file!")
+        return None
 
-    # full filename matches
-    for col in ["pdb_file", "file_name", "filename"]:
-        if col in df.columns:
-            mask = df[col].astype(str).str.lower() == fname.lower()
-            candidates.append(df[mask])
+    # Convert everything to lower string
+    col_values = metadata_df[col].astype(str).str.lower()
+    needle1 = pdb_filename.lower()
+    needle2 = pdb_root.lower()
 
-    # id (without .pdb) matches
-    for col in ["pdb", "pdb_id"]:
-        if col in df.columns:
-            mask = df[col].astype(str).str.lower() == root.lower()
-            candidates.append(df[mask])
+    match = metadata_df[col_values == needle1]  # exact match with filename
+    if match.empty:
+        match = metadata_df[col_values == needle2]  # match without .pdb
 
-    # pick the first non-empty candidate
-    for cand in candidates:
-        if cand is not None and not cand.empty:
-            return cand
-
-    return None
+    return match if not match.empty else None
 
 
 # ----------------------------------------------------
-# STREAMLIT APP
+# STREAMLIT UI
 # ----------------------------------------------------
-st.title("🧬 GitHub PDB 3D Viewer with Metadata")
+st.title("🧬 GitHub PDB 3D Viewer + Metadata Table")
+st.write("Select a PDB file from the repo to view its 3D structure and metadata.")
 
-# Load list of PDBs and metadata
-try:
-    pdb_files = list_pdb_files()
-except Exception as e:
-    st.error(f"Error listing PDB files: {e}")
-    pdb_files = []
-
-try:
-    metadata_df = load_metadata()
-except Exception as e:
-    st.error(f"Error loading metadata file: {e}")
-    metadata_df = pd.DataFrame()
+# Load everything
+pdb_files = list_pdb_files()
+metadata_df = load_metadata()
 
 if not pdb_files:
-    st.warning("No PDB files found in the GitHub repository.")
-else:
-    # Select PDB file
-    selected_pdb = st.selectbox("Select a PDB file", pdb_files)
+    st.error("❌ No PDB files found in your GitHub repo.")
+    st.stop()
 
-    if selected_pdb:
-        pdb_text = fetch_pdb_from_github(selected_pdb)
-        if pdb_text:
-            # Two columns: left = 3D, right = metadata table
-            col1, col2 = st.columns([2, 1])
+# Select PDB
+selected_pdb = st.selectbox("Select a PDB file", pdb_files)
 
-            with col1:
-                st.subheader(f"3D Structure: {selected_pdb}")
-                show_3d_pdb(pdb_text)
+if selected_pdb:
+    pdb_text = fetch_pdb_from_github(selected_pdb)
 
-            with col2:
-                st.subheader("Metadata")
-                if metadata_df.empty:
-                    st.info("No metadata file loaded.")
-                else:
-                    matched = find_metadata_for_pdb(metadata_df, selected_pdb)
-                    if matched is None or matched.empty:
-                        st.info("No metadata found for this PDB.")
-                    else:
-                        # reset index and show as table
-                        st.dataframe(matched.reset_index(drop=True))
+    if pdb_text:
+        col1, col2 = st.columns([2, 1])
+
+        # Left side → 3D viewer
+        with col1:
+            st.subheader(f"3D Structure: {selected_pdb}")
+            show_3d_pdb(pdb_text)
+
+        # Right side → Metadata
+        with col2:
+            st.subheader("📊 Metadata")
+            metadata_row = find_metadata(metadata_df, selected_pdb)
+
+            if metadata_row is None:
+                st.info("No metadata found for this PDB.")
+            else:
+                st.dataframe(metadata_row.reset_index(drop=True))
