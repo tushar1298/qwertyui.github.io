@@ -198,28 +198,14 @@ def load_metadata():
     except Exception:
         return pd.DataFrame()
 
-@st.cache_data(ttl=600)
-def list_pdb_files():
-    """List PDB files from Supabase Storage Bucket with extended limit."""
-    if not supabase:
-        st.error("Supabase client not initialized. Check API Key.")
-        return []
-        
-    try:
-        # Fetch list of files from the bucket
-        # Set limit to 50000 to overcome default 100 item limit
-        res = supabase.storage.from_(BUCKET_NAME).list(path=None, options={'limit': 50000})
-        
-        files = []
-        if res:
-            for f in res:
-                name = f.get('name', '')
-                if name.lower().endswith(".pdb"):
-                    files.append(name)
-        return sorted(files)
-    except Exception as e:
-        st.error(f"Error fetching file list from Supabase: {e}")
-        return []
+@st.cache_data
+def get_ids_from_metadata():
+    """Extract unique NucLigs IDs (nl column) from the Excel file."""
+    df = load_metadata()
+    if not df.empty and 'nl' in df.columns:
+        # Drop NaNs, convert to string, remove duplicates, and sort
+        return sorted(df['nl'].dropna().astype(str).unique().tolist())
+    return []
 
 def fetch_pdb_from_supabase(filename_or_id: str) -> str | None:
     """Download specific PDB file content from Supabase. Adds .pdb if missing."""
@@ -299,26 +285,6 @@ def compute_physchem_from_pdb(pdb_text: str) -> dict:
         pass
     return props
 
-def find_metadata(metadata_df, pdb_filename):
-    if metadata_df.empty:
-        return None
-        
-    pdb_root = pdb_filename.replace(".pdb", "").lower()
-    # Ensure matching column exists
-    if "pdbs" not in metadata_df.columns:
-        return None
-    
-    metadata_df["match"] = metadata_df["pdbs"].astype(str).str.lower()
-    
-    # Try exact match
-    match = metadata_df[metadata_df["match"] == pdb_filename.lower()]
-    if not match.empty:
-        return match
-
-    # Try root match
-    match = metadata_df[metadata_df["match"] == pdb_root]
-    return match if not match.empty else None
-
 # ----------------------------------------------------
 # 3D Viewer Function
 # ----------------------------------------------------
@@ -356,29 +322,31 @@ with st.sidebar:
     st.image(LOGO_URL, use_container_width=True)
     st.markdown("### NucLigs Database")
     
-    # Updated: Source of list is Supabase (with limit=50000)
-    all_pdb_files = list_pdb_files()
+    # 1. Load Metadata First
     metadata_df = load_metadata()
+    
+    # 2. Get IDs from the 'nl' column (NucLigs IDs)
+    all_nuc_ids = get_ids_from_metadata()
 
     st.markdown("#### 🕵️ Overall Search")
-    search_query = st.text_input("Filter database:", placeholder="Enter structure ID...", label_visibility="collapsed")
+    search_query = st.text_input("Filter database:", placeholder="Search NucL ID...", label_visibility="collapsed")
     
-    # Filter using Excel PDBS column identification logic
-    # We display files from bucket, but filter based on match
+    # Filter Logic based on NucL IDs
     if search_query:
-        pdb_files = [p for p in all_pdb_files if search_query.lower() in p.lower()]
-        if not pdb_files:
+        nuc_ids = [i for i in all_nuc_ids if search_query.lower() in i.lower()]
+        if not nuc_ids:
             st.warning("No matches found.")
-            pdb_files = []
+            nuc_ids = []
         else:
-            st.success(f"Found {len(pdb_files)} structures")
+            st.success(f"Found {len(nuc_ids)} structures")
     else:
-        pdb_files = all_pdb_files
+        nuc_ids = all_nuc_ids
 
-    if pdb_files:
-        selected_pdb_id = st.selectbox("Select Structure Result:", pdb_files, index=0)
+    # Select Box displays NucL IDs
+    if nuc_ids:
+        selected_nuc_id = st.selectbox("Select Structure Result:", nuc_ids, index=0)
     else:
-        selected_pdb_id = None
+        selected_nuc_id = None
     
     st.divider()
     
@@ -391,15 +359,29 @@ with st.sidebar:
     if supabase is None:
         st.error("⚠️ Supabase connection failed. Check Key.")
     
-    st.caption(f"**Total Entries:** {len(all_pdb_files)}")
-    st.caption("v1.7.0 • Powered by Supabase & RDKit")
+    st.caption(f"**Total Entries:** {len(all_nuc_ids)}")
+    st.caption("v1.8.0 • Powered by Supabase & RDKit")
 
 # 2. MAIN AREA
-if not selected_pdb_id:
+if not selected_nuc_id:
     st.info("👈 Please search for or select a structure from the sidebar.")
 else:
-    # Fetch from SUPABASE using the filename from the list
-    pdb_text = fetch_pdb_from_supabase(selected_pdb_id)
+    # 3. Resolve ID to Filename (Look up 'pdbs' value using 'nl' ID)
+    # Filter metadata for the selected NucL ID
+    row = metadata_df[metadata_df['nl'].astype(str) == selected_nuc_id]
+    
+    pdb_text = None
+    data = {}
+    
+    if not row.empty:
+        # Get filename from 'pdbs' column
+        pdb_filename = str(row.iloc[0]['pdbs'])
+        data = row.iloc[0].to_dict()
+        
+        # Fetch file using the looked-up filename
+        pdb_text = fetch_pdb_from_supabase(pdb_filename)
+    else:
+        st.error(f"Metadata not found for ID: {selected_nuc_id}")
 
     if pdb_text:
         physchem = compute_physchem_from_pdb(pdb_text)
@@ -409,7 +391,7 @@ else:
 
         # --- COLUMN 1: 3D VIEWER & DOWNLOADS ---
         with col_viewer:
-            st.subheader(f"3D Visualization: {selected_pdb_id}")
+            st.subheader(f"3D Visualization: {selected_nuc_id}")
             show_3d_pdb(pdb_text, bg_color)
             
             st.markdown("##### 📥 Export Data")
@@ -419,7 +401,7 @@ else:
                 st.download_button(
                     label="Download .PDB",
                     data=pdb_text,
-                    file_name=selected_pdb_id,
+                    file_name=f"{selected_nuc_id}.pdb",
                     mime="chemical/x-pdb",
                     use_container_width=True
                 )
@@ -431,7 +413,7 @@ else:
                     st.download_button(
                         label="Download .SDF",
                         data=sdf_data,
-                        file_name=selected_pdb_id.replace('.pdb', '.sdf'),
+                        file_name=f"{selected_nuc_id}.sdf",
                         mime="chemical/x-mdl-sdfile",
                         use_container_width=True
                     )
@@ -439,7 +421,7 @@ else:
                     st.download_button(
                         label="Download .MOL",
                         data=sdf_data,
-                        file_name=selected_pdb_id.replace('.pdb', '.mol'),
+                        file_name=f"{selected_nuc_id}.mol",
                         mime="chemical/x-mdl-molfile",
                         use_container_width=True
                     )
@@ -510,14 +492,10 @@ else:
             st.subheader("Metadata Record")
             st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
             
-            row = find_metadata(metadata_df, selected_pdb_id)
-
-            if row is not None and not row.empty:
-                data = row.iloc[0].to_dict()
-                
+            # Use 'data' dict extracted above
+            if data:
                 # Extract Specific Fields for Highlighting
                 nl_id = data.get('nl', 'Unknown')
-                # 'names' column stores the full chemical name
                 chem_name = data.get('names', data.get('name', '')) 
                 
                 # Highlight Card for 'nl' and 'names'
