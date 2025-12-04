@@ -306,7 +306,7 @@ def render_homepage():
         <div style="text-align: center; padding-top: 10px;">
             <img src="{LOGO_URL}" width="180" style="margin-bottom: 15px;">
             <h1 style='color: #2c3e50; margin-bottom: 0;'>NucLigs Database</h1>
-            <p style='color: #666; font-size: 1.15rem; font-weight: 300;'>The Premier Resource for Nucleic Acid Ligand Structures</p>
+            <p style='color: #666; font-size: 1.15rem; font-weight: 300;'>The Premier Resource for Nucleotide and Nucleoside analog Structures</p>
         </div>
         """, 
         unsafe_allow_html=True
@@ -319,11 +319,12 @@ def render_homepage():
     <div style='background-color: #f8f9fa; padding: 30px; border-radius: 12px; border-left: 5px solid #4CAF50; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 40px;'>
         <h3 style='color: #2c3e50; margin-top: 0;'>About the Database</h3>
         <p style='color: #444; font-size: 1.05rem; line-height: 1.6;'>
-            The <b>NucLigs Database</b> is a specialized repository designed to facilitate research in the field of nucleic acid targeting. 
-            It aggregates structural data of small molecule ligands bound to DNA and RNA targets, providing a unified platform for detailed analysis and visualization.
+            The <b>NucLigs Database</b> is a specialized repository designed to facilitate research in the field of nucleic acid targeting by incorporating 
+            <b>nucleoside and nucleotide analogs</b> at one place providing a unified platform for detailed analysis and visualization.
         </p>
         <p style='color: #444; font-size: 1.05rem; line-height: 1.6; margin-bottom: 0;'>
-            Whether you are involved in <b>rational drug design</b>, <b>structural biology</b>, or <b>cheminformatics</b>, NucLigs offers robust tools to explore the physico-chemical landscape of nucleic acid interactions, supporting the discovery of next-generation therapeutics.
+            Whether you are involved in <b>rational drug design</b>, <b>structural biology</b>, or <b>cheminformatics</b>, NucLigs offers robust tools to explore 
+            the physico-chemical landscape of nucleic acid interactions, supporting the discovery of next-generation therapeutics.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -334,7 +335,7 @@ def render_homepage():
     with f1:
         st.markdown("""
         <div class="home-card">
-            <h3>🧊 3D Visualization</h3>
+            <h3> 3D Visualization</h3>
             <p>Interactive, high-fidelity rendering of ligand-target complexes using Py3Dmol. Inspect binding modes, molecular surfaces, and structural conformations in real-time directly within your browser.</p>
         </div>
         """, unsafe_allow_html=True)
@@ -342,7 +343,7 @@ def render_homepage():
     with f2:
         st.markdown("""
         <div class="home-card">
-            <h3>⚗️ Chemical Profiling</h3>
+            <h3> Chemical Profiling</h3>
             <p>Automated calculation of critical molecular descriptors. Access data on Molecular Weight, LogP, TPSA, and Lipinski's Rule of 5 compliance powered by the RDKit cheminformatics engine.</p>
         </div>
         """, unsafe_allow_html=True)
@@ -350,7 +351,7 @@ def render_homepage():
     with f3:
         st.markdown("""
         <div class="home-card">
-            <h3>📂 Data Accessibility</h3>
+            <h3> Data Accessibility</h3>
             <p>Seamlessly retrieve standardized structural data. Export ligands and complexes in industry-standard formats (PDB, SDF, MOL) to integrate directly with your local modeling workflows.</p>
         </div>
         """, unsafe_allow_html=True)
@@ -360,7 +361,7 @@ def render_homepage():
     # Primary Action
     _, btn_col, _ = st.columns([1.5, 1, 1.5])
     with btn_col:
-        if st.button("🚀 Explore the Collection", type="primary", use_container_width=True):
+        if st.button(" Explore the Collection", type="primary", use_container_width=True):
             st.session_state['page'] = 'database'
             st.rerun()
     
@@ -377,7 +378,7 @@ def render_database():
             st.rerun()
             
         st.markdown("---")
-        st.markdown("### 🔍 Finder")
+        st.markdown("###  Finder")
 
         search_query = st.text_input("Filter database:", placeholder="Search NucL ID or Name...", label_visibility="collapsed")
         
@@ -408,7 +409,7 @@ def render_database():
         
         # --- BULK ACTIONS (New Feature) ---
         if nuc_ids:
-            with st.expander("📦 Bulk Actions", expanded=False):
+            with st.expander(" Bulk Actions", expanded=False):
                 st.caption("Download multiple structures & data based on your current search.")
                 
                 # Selection for bulk
@@ -490,7 +491,7 @@ def render_database():
                         
                         # Show Download Buttons
                         st.download_button(
-                            label=f"📥 Download {len(bulk_selected)} Structures (.zip)",
+                            label=f" Download {len(bulk_selected)} Structures (.zip)",
                             data=zip_buffer,
                             file_name="nucligs_structures.zip",
                             mime="application/zip",
@@ -499,7 +500,7 @@ def render_database():
                         
                         if csv_buffer:
                             st.download_button(
-                                label="📥 Download Data Table (.csv)",
+                                label=" Download Data Table (.csv)",
                                 data=csv_buffer,
                                 file_name="nucligs_data.csv",
                                 mime="text/csv",
@@ -519,7 +520,7 @@ def render_database():
 
     # Main Content
     if not selected_nuc_id:
-        st.info("👈 Please search for or select a structure from the sidebar.")
+        st.info(" Please search for or select a structure from the sidebar.")
         return
 
     # Resolve Data
@@ -563,7 +564,7 @@ def render_database():
             st.subheader(f"3D Visualization: {selected_nuc_id}")
             show_3d_pdb(pdb_text, bg_color)
             
-            st.markdown("##### 📥 Export Data")
+            st.markdown("#####  Export Data")
             d1, d2, d3, d4 = st.columns([1, 1, 1, 1.2]) # Adjusted columns
             with d1:
                 st.download_button("Download .PDB", pdb_text, f"{selected_nuc_id}.pdb", "chemical/x-pdb", use_container_width=True)
@@ -590,7 +591,7 @@ def render_database():
             st.subheader("Chemical Analysis")
             st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
             if physchem:
-                st.markdown('<div class="feature-card"><h5>🧪 Identity</h5>', unsafe_allow_html=True)
+                st.markdown('<div class="feature-card"><h5> Identity</h5>', unsafe_allow_html=True)
                 render_row("Formula", physchem.get("Formula", "-"))
                 render_row("Mol Weight", f"{physchem.get('Mol Wt', '-')} da")
                 render_row("Formal Charge", physchem.get("Charge", "0"))
@@ -609,7 +610,7 @@ def render_database():
                 render_row("Mol Weight", f"{physchem.get('Mol Wt', '-')} da", "≤ 500")
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                st.markdown('<div class="feature-card"><h5>💊 Druglikeness</h5>', unsafe_allow_html=True)
+                st.markdown('<div class="feature-card"><h5> Druglikeness</h5>', unsafe_allow_html=True)
                 render_row("QED Score", physchem.get("QED", "-"))
                 render_row("Est. Solubility", physchem.get("ESOL (LogS)", "-"))
                 render_row("TPSA", f"{physchem.get('TPSA', '-')} Å²")
@@ -634,7 +635,7 @@ def render_database():
                 
                 st.markdown(f'<div class="id-card"><div class="id-label">NucLigs Identifier</div><div class="id-value">{nl_id}</div><div class="id-sub">{chem_name}</div></div>', unsafe_allow_html=True)
 
-                st.markdown('<div class="feature-card"><h5>📋 General Info</h5>', unsafe_allow_html=True)
+                st.markdown('<div class="feature-card"><h5> General Info</h5>', unsafe_allow_html=True)
                 exclude_fields = ['nl', 'names', 'name', 'pdbs', 'match', 'smiles', 'inchi', 'description', 'sequence']
                 for key, value in data.items():
                     if key not in exclude_fields and str(value).lower() != 'nan':
