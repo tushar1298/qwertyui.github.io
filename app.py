@@ -30,7 +30,7 @@ st.markdown(
     <style>
     /* Global Container Padding */
     .block-container {
-        padding-top: 2rem;
+        padding-top: 1rem; /* Reduced from 2rem to show more of the logo */
         padding-bottom: 3rem;
     }
 
@@ -169,8 +169,9 @@ st.markdown(
     .badge-pass { background-color: #d4edda; color: #155724; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; }
     .badge-fail { background-color: #f8d7da; color: #721c24; padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; }
     
+    /* Sidebar Logo Adjustment */
     [data-testid="stSidebar"] img {
-        margin-bottom: 20px;
+        margin-bottom: 0px; /* Reduced from 20px to move it up */
         border-radius: 10px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
