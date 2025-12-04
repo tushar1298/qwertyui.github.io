@@ -374,11 +374,19 @@ def render_database():
         st.markdown("---")
         st.markdown("### 🔍 Finder")
 
-        search_query = st.text_input("Filter database:", placeholder="Search NucL ID...", label_visibility="collapsed")
+        search_query = st.text_input("Filter database:", placeholder="Search NucL ID or Name...", label_visibility="collapsed")
         
         # Filter Logic
         if search_query:
-            nuc_ids = [i for i in all_nuc_ids if search_query.lower() in i.lower()]
+            # Filter matches from both 'nl' and 'names' columns
+            q = search_query.lower()
+            mask = (
+                metadata_df['nl'].astype(str).str.lower().str.contains(q, na=False) | 
+                metadata_df['names'].astype(str).str.lower().str.contains(q, na=False)
+            )
+            filtered_matches = metadata_df[mask]['nl'].dropna().unique().tolist()
+            nuc_ids = sorted([str(x) for x in filtered_matches])
+            
             if not nuc_ids:
                 st.warning("No matches found.")
                 nuc_ids = []
