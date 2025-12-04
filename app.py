@@ -73,6 +73,36 @@ st.markdown(
         padding-bottom: 8px;
     }
 
+    /* ID Highlight Card */
+    .id-card {
+        background-color: #f8f9fa;
+        border-left: 5px solid #4CAF50;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .id-label {
+        font-size: 0.75rem;
+        color: #666;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .id-value {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #2c3e50;
+        margin: 4px 0 8px 0;
+        line-height: 1.2;
+    }
+    .id-sub {
+        font-size: 1.0rem;
+        color: #555;
+        font-weight: 500;
+        font-style: italic;
+    }
+
     /* Data Points */
     .data-row {
         display: flex;
@@ -133,14 +163,12 @@ st.markdown(
 # Derived from your DB host: db.heuzgnhlrumyfcfigoon.supabase.co
 SUPABASE_URL = "https://heuzgnhlrumyfcfigoon.supabase.co"
 
-# ⚠️ PLACEHOLDER: Enter your Supabase 'anon' public key here
-# You can find this in Supabase Dashboard -> Project Settings -> API
+# Supabase Anon Public Key (from user provided code)
 SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
 
 BUCKET_NAME = "NucLigs_PDBs"
 
 # Initialize Client
-# We use st.cache_resource to initialize the connection once
 @st.cache_resource
 def init_supabase():
     try:
@@ -167,15 +195,10 @@ def list_pdb_files():
         return []
         
     try:
-        # Fetch list of files from the bucket
-        # Note: Depending on folder structure, you might need to adjust path
         res = supabase.storage.from_(BUCKET_NAME).list()
-        
-        # 'res' is typically a list of dicts/objects
         files = []
         if res:
             for f in res:
-                # Supabase storage list returns objects with 'name'
                 name = f.get('name', '')
                 if name.lower().endswith(".pdb"):
                     files.append(name)
@@ -190,9 +213,7 @@ def fetch_pdb_from_supabase(filename: str) -> str | None:
         return None
         
     try:
-        # Download returns bytes
         data_bytes = supabase.storage.from_(BUCKET_NAME).download(filename)
-        # Decode bytes to string for Py3Dmol and RDKit
         return data_bytes.decode('utf-8')
     except Exception as e:
         st.error(f"Error downloading {filename}: {e}")
@@ -202,7 +223,8 @@ def fetch_pdb_from_supabase(filename: str) -> str | None:
 def load_metadata():
     try:
         df = pd.read_excel(METADATA_URL)
-        df.columns = [c.strip().lower() for c in df.columns]
+        # Normalize columns: lower case and strip whitespace
+        df.columns = [str(c).strip().lower() for c in df.columns]
         return df
     except Exception:
         return pd.DataFrame()
@@ -211,16 +233,10 @@ def load_metadata():
 # Computation Functions
 # ----------------------------------------------------
 def calculate_esol(mol, logp, mw, rb, aromatic_rings):
-    """
-    Estimate solubility (ESOL)
-    LogS = 0.16 - 0.63(cLogP) - 0.0062(MW) + 0.066(RB) - 0.74(AromaticProportion)
-    """
     try:
         num_heavy = mol.GetNumHeavyAtoms()
         num_aromatic = sum(1 for atom in mol.GetAtoms() if atom.GetIsAromatic())
         aromatic_prop = num_aromatic / num_heavy if num_heavy > 0 else 0
-        
-        # ESOL Formula
         esol = 0.16 - (0.63 * logp) - (0.0062 * mw) + (0.066 * rb) - (0.74 * aromatic_prop)
         return esol
     except:
@@ -233,36 +249,25 @@ def compute_physchem_from_pdb(pdb_text: str) -> dict:
         if mol is None:
             return props
 
-        # 1. Basic Descriptors
         mw = Descriptors.MolWt(mol)
         logp = Crippen.MolLogP(mol)
         h_acc = Lipinski.NumHAcceptors(mol)
         h_don = Lipinski.NumHDonors(mol)
         rb = Lipinski.NumRotatableBonds(mol)
         
-        # 2. Formula & Charge
         formula = rdMolDescriptors.CalcMolFormula(mol)
         charge = Chem.GetFormalCharge(mol)
-        
-        # 3. Stereochemistry
         chiral_centers = len(Chem.FindMolChiralCenters(mol, includeUnassigned=True))
-
-        # 4. Advanced Descriptors
         qed = QED.qed(mol)
         aromatic_rings = Lipinski.NumAromaticRings(mol)
-        
-        # 5. ESOL Calculation
         esol = calculate_esol(mol, logp, mw, rb, aromatic_rings)
 
-        # 6. Lipinski Violations
-        # MW <= 500, LogP <= 5, H-Don <= 5, H-Acc <= 10
         violations = 0
         if mw > 500: violations += 1
         if logp > 5: violations += 1
         if h_don > 5: violations += 1
         if h_acc > 10: violations += 1
 
-        # Store nicely formatted strings
         props["Formula"] = formula
         props["Charge"] = str(charge)
         props["Chiral Centers"] = str(chiral_centers)
@@ -280,8 +285,6 @@ def compute_physchem_from_pdb(pdb_text: str) -> dict:
         props["Atoms"] = mol.GetNumAtoms()
         props["F-Csp3"] = f"{rdMolDescriptors.CalcFractionCSP3(mol):.2f}"
         props["Lipinski Violations"] = violations
-        
-        # Store Raw mol for export
         props["_RDKitMol"] = mol
         
     except Exception:
@@ -293,6 +296,7 @@ def find_metadata(metadata_df, pdb_filename):
         return None
         
     pdb_root = pdb_filename.replace(".pdb", "").lower()
+    # Ensure matching column exists
     if "pdbs" not in metadata_df.columns:
         return None
     
@@ -344,15 +348,12 @@ with st.sidebar:
     st.image(LOGO_URL, use_container_width=True)
     st.markdown("### NucLigs Database")
     
-    # Load Data
     all_pdb_files = list_pdb_files()
     metadata_df = load_metadata()
 
-    # --- ENHANCED SEARCH SECTION ---
     st.markdown("#### 🕵️ Overall Search")
     search_query = st.text_input("Filter database:", placeholder="Enter structure ID...", label_visibility="collapsed")
     
-    # Filter Logic
     if search_query:
         pdb_files = [p for p in all_pdb_files if search_query.lower() in p.lower()]
         if not pdb_files:
@@ -363,7 +364,6 @@ with st.sidebar:
     else:
         pdb_files = all_pdb_files
 
-    # List Display (Sidebar)
     if pdb_files:
         selected_pdb = st.selectbox("Select Structure Result:", pdb_files, index=0)
     else:
@@ -371,7 +371,6 @@ with st.sidebar:
     
     st.divider()
     
-    # Viewer Settings in Sidebar
     st.markdown("**Viewer Settings**")
     bg_mode = st.radio("Background", ["Light", "Dark"], horizontal=True, label_visibility="collapsed")
     bg_color = "white" if bg_mode == "Light" else "#1e1e1e"
@@ -382,20 +381,18 @@ with st.sidebar:
         st.error("⚠️ Supabase connection failed. Check Key.")
     
     st.caption(f"**Total Entries:** {len(all_pdb_files)}")
-    st.caption("v1.4.0 • Powered by Supabase & RDKit")
+    st.caption("v1.5.0 • Powered by Supabase & RDKit")
 
 # 2. MAIN AREA
 if not selected_pdb:
     st.info("👈 Please search for or select a structure from the sidebar.")
 else:
-    # Fetch from SUPABASE instead of GitHub
     pdb_text = fetch_pdb_from_supabase(selected_pdb)
 
     if pdb_text:
-        # Compute properties
         physchem = compute_physchem_from_pdb(pdb_text)
         
-        # Main Layout: 3 Columns
+        # Layout: 3 Columns
         col_viewer, col_preds, col_meta = st.columns([2.2, 0.9, 0.9])
 
         # --- COLUMN 1: 3D VIEWER & DOWNLOADS ---
@@ -403,11 +400,9 @@ else:
             st.subheader(f"3D Visualization: {selected_pdb}")
             show_3d_pdb(pdb_text, bg_color)
             
-            # --- DOWNLOAD OPTIONS ---
             st.markdown("##### 📥 Export Data")
             d1, d2, d3 = st.columns(3)
             
-            # 1. PDB Download
             with d1:
                 st.download_button(
                     label="Download .PDB",
@@ -417,10 +412,9 @@ else:
                     use_container_width=True
                 )
             
-            # 2. SDF Download (Convert on fly)
             mol_obj = physchem.get("_RDKitMol")
             if mol_obj:
-                sdf_data = Chem.MolToMolBlock(mol_obj) # V2000 mol block standard
+                sdf_data = Chem.MolToMolBlock(mol_obj)
                 with d2:
                     st.download_button(
                         label="Download .SDF",
@@ -459,7 +453,7 @@ else:
                 render_row("Stereocenters", physchem.get("Chiral Centers", "0"))
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                # 2. Lipinski Rules with REFERENCE DATA
+                # 2. Lipinski Rules
                 violations = physchem.get("Lipinski Violations", 0)
                 badge_class = "badge-pass" if violations == 0 else "badge-fail"
                 badge_text = "PASS (0 Violations)" if violations == 0 else f"FAIL ({violations} Violations)"
@@ -472,13 +466,11 @@ else:
                     </div>
                 """, unsafe_allow_html=True)
                 
-                # Added References here
                 render_row("LogP", physchem.get("LogP", "-"), ref="≤ 5")
                 render_row("H-Donors", physchem.get("H-Don", "-"), ref="≤ 5")
                 render_row("H-Acceptors", physchem.get("H-Acc", "-"), ref="≤ 10")
-                render_row("Rot. Bonds", physchem.get("Rot. Bonds", "-")) # RB often cited as <= 10 but not strictly Ro5
+                render_row("Rot. Bonds", physchem.get("Rot. Bonds", "-"))
                 render_row("Mol Weight", f"{physchem.get('Mol Wt', '-')} da", ref="≤ 500")
-                
                 st.markdown('</div>', unsafe_allow_html=True)
 
                 # 3. Druglikeness
@@ -496,7 +488,6 @@ else:
                 render_row("Aromatic Rings", physchem.get("Arom. Rings", "-"))
                 render_row("Saturated Rings", physchem.get("Sat. Rings", "-"))
                 st.markdown('</div>', unsafe_allow_html=True)
-            
             else:
                 st.warning("Unable to compute chemical properties for this structure.")
             st.markdown("</div>", unsafe_allow_html=True)
@@ -511,19 +502,34 @@ else:
 
             if row is not None and not row.empty:
                 data = row.iloc[0].to_dict()
-                data.pop("match", None)
                 
-                long_fields = ["names", "smiles", "inchi", "description", "sequence"]
+                # Extract Specific Fields for Highlighting
+                nl_id = data.get('nl', 'Unknown')
+                # 'names' column stores the full chemical name
+                chem_name = data.get('names', data.get('name', '')) 
                 
-                # Standard fields Card
+                # Highlight Card for 'nl' and 'names'
+                st.markdown(f"""
+                <div class="id-card">
+                    <div class="id-label">NucLigs Identifier</div>
+                    <div class="id-value">{nl_id}</div>
+                    <div class="id-sub">{chem_name}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # General Info Card (Exclude keys we just showed)
                 st.markdown('<div class="feature-card">', unsafe_allow_html=True)
                 st.markdown("<h5>📋 General Info</h5>", unsafe_allow_html=True)
+                
+                exclude_fields = ['nl', 'names', 'name', 'pdbs', 'match', 'smiles', 'inchi', 'description', 'sequence']
+                
                 for key, value in data.items():
-                    if key.lower() not in long_fields and str(value).lower() != 'nan':
+                    if key not in exclude_fields and str(value).lower() != 'nan':
                         render_row(key.replace('_', ' ').title(), str(value))
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                # Long fields in Expanders to save space
+                # Long fields in Expanders
+                long_fields = ["smiles", "inchi", "description", "sequence"]
                 for key in long_fields:
                     if key in data and str(data[key]).lower() != 'nan':
                         with st.expander(key.upper(), expanded=False):
