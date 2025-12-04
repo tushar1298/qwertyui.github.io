@@ -175,6 +175,18 @@ st.markdown(
         border-radius: 10px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
+    /* Adjust container padding */
+    .block-container {
+        padding-top: 1rem; /* Reduce from 2rem */
+        padding-bottom: 3rem;
+    }
+
+    /* Sidebar Logo Adjustment */
+    [data-testid="stSidebar"] img {
+        margin-bottom: 0px; /* Reduce from 20px */
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
     </style>
     """,
     unsafe_allow_html=True,
