@@ -153,7 +153,7 @@ supabase = init_supabase()
 # ----------------------------------------------------
 # External URLs (Metadata/Logo)
 # ----------------------------------------------------
-METADATA_URL = "https://raw.githubusercontent.com/tushar1298/qwertyui/main/NucLigs_data_2811.xlsx"
+METADATA_URL = "https://raw.githubusercontent.com/tushar1298/qwertyui/main/NucLigs_metadata.xlsx"
 LOGO_URL = "https://raw.githubusercontent.com/tushar1298/qwertyui/main/NucLigs.png"
 
 # ----------------------------------------------------
