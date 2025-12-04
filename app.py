@@ -135,7 +135,7 @@ SUPABASE_URL = "https://heuzgnhlrumyfcfigoon.supabase.co"
 
 # ⚠️ PLACEHOLDER: Enter your Supabase 'anon' public key here
 # You can find this in Supabase Dashboard -> Project Settings -> API
-SUPABASE_KEY = sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5
+SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
 
 BUCKET_NAME = "NucLigs_PDBs"
 
