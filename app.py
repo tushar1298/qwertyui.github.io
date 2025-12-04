@@ -268,7 +268,7 @@ def compute_physchem(mol) -> dict:
         props["Mol Wt"] = f"{mw:.2f}"
         props["LogP"] = f"{logp:.2f}"
         props["TPSA"] = f"{rdMolDescriptors.CalcTPSA(mol):.2f}"
-        props["QED"] = f"{:.3f}"
+        props["QED"] = f"{qed:.3f}"
         props["ESOL (LogS)"] = f"{esol:.2f}" if esol else "N/A"
         props["H-Acc"] = h_acc
         props["H-Don"] = h_don
