@@ -236,13 +236,13 @@ def calculate_esol(mol, logp, mw, rb, aromatic_rings):
     except:
         return None
 
-def compute_physchem_from_pdb(pdb_text: str) -> dict:
+def compute_physchem(mol) -> dict:
+    """Compute physical and chemical properties from an RDKit Mol object."""
     props = {}
-    try:
-        mol = Chem.MolFromPDBBlock(pdb_text, sanitize=True, removeHs=False)
-        if mol is None:
-            return props
+    if mol is None:
+        return props
 
+    try:
         mw = Descriptors.MolWt(mol)
         logp = Crippen.MolLogP(mol)
         h_acc = Lipinski.NumHAcceptors(mol)
@@ -360,22 +360,23 @@ with st.sidebar:
         st.error("⚠️ Supabase connection failed. Check Key.")
     
     st.caption(f"**Total Entries:** {len(all_nuc_ids)}")
-    st.caption("v1.8.0 • Powered by Supabase & RDKit")
+    st.caption("v1.9.0 • Powered by Supabase & RDKit")
 
 # 2. MAIN AREA
 if not selected_nuc_id:
     st.info("👈 Please search for or select a structure from the sidebar.")
 else:
-    # 3. Resolve ID to Filename (Look up 'pdbs' value using 'nl' ID)
-    # Filter metadata for the selected NucL ID
+    # 3. Resolve ID to Filename & SMILES
     row = metadata_df[metadata_df['nl'].astype(str) == selected_nuc_id]
     
     pdb_text = None
     data = {}
+    smiles_str = None
     
     if not row.empty:
-        # Get filename from 'pdbs' column
+        # Get filename and SMILES
         pdb_filename = str(row.iloc[0]['pdbs'])
+        smiles_str = str(row.iloc[0].get('smiles', ''))
         data = row.iloc[0].to_dict()
         
         # Fetch file using the looked-up filename
@@ -384,7 +385,23 @@ else:
         st.error(f"Metadata not found for ID: {selected_nuc_id}")
 
     if pdb_text:
-        physchem = compute_physchem_from_pdb(pdb_text)
+        # 4. Create Molecule Object for Properties
+        # PRIORITIZE SMILES if available, otherwise fallback to PDB block
+        mol = None
+        if smiles_str and smiles_str.lower() != 'nan' and smiles_str.strip():
+            try:
+                mol = Chem.MolFromSmiles(smiles_str)
+            except:
+                mol = None
+        
+        if mol is None:
+            # Fallback to PDB parsing if SMILES failed or missing
+            try:
+                mol = Chem.MolFromPDBBlock(pdb_text, sanitize=True, removeHs=False)
+            except:
+                mol = None
+
+        physchem = compute_physchem(mol)
         
         # Layout: 3 Columns
         col_viewer, col_preds, col_meta = st.columns([2.2, 0.9, 0.9])
@@ -399,7 +416,7 @@ else:
             
             with d1:
                 st.download_button(
-                    label="Download PDB",
+                    label="Download .PDB",
                     data=pdb_text,
                     file_name=f"{selected_nuc_id}.pdb",
                     mime="chemical/x-pdb",
@@ -411,7 +428,7 @@ else:
                 sdf_data = Chem.MolToMolBlock(mol_obj)
                 with d2:
                     st.download_button(
-                        label="Download SDF",
+                        label="Download .SDF",
                         data=sdf_data,
                         file_name=f"{selected_nuc_id}.sdf",
                         mime="chemical/x-mdl-sdfile",
@@ -419,7 +436,7 @@ else:
                     )
                 with d3:
                     st.download_button(
-                        label="Download MOL2",
+                        label="Download .MOL",
                         data=sdf_data,
                         file_name=f"{selected_nuc_id}.mol",
                         mime="chemical/x-mdl-molfile",
