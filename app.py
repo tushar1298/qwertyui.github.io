@@ -411,7 +411,7 @@ else:
                 sdf_data = Chem.MolToMolBlock(mol_obj)
                 with d2:
                     st.download_button(
-                        label="Download sdf",
+                        label="Download SDF",
                         data=sdf_data,
                         file_name=f"{selected_nuc_id}.sdf",
                         mime="chemical/x-mdl-sdfile",
@@ -419,7 +419,7 @@ else:
                     )
                 with d3:
                     st.download_button(
-                        label="Download mol2",
+                        label="Download MOL2",
                         data=sdf_data,
                         file_name=f"{selected_nuc_id}.mol",
                         mime="chemical/x-mdl-molfile",
