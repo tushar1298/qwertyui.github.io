@@ -30,7 +30,7 @@ st.markdown(
     <style>
     /* Global Container Padding */
     .block-container {
-        padding-top: 3.5rem;
+        padding-top: 3.5rem; /* Increased to ensure logo isn't cut off */
         padding-bottom: 3rem;
     }
 
@@ -211,7 +211,7 @@ st.markdown(
 # ----------------------------------------------------
 SUPABASE_URL = "https://heuzgnhlrumyfcfigoon.supabase.co"
 SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
-BUCKET_NAME = "NucLigs_PDBs"
+BUCKET_NAME = "codes" # Updated to new bucket
 METADATA_BUCKET = "codes"
 METADATA_FILENAME = "NucLigs_metadata.xlsx"
 
