@@ -211,9 +211,10 @@ st.markdown(
 # ----------------------------------------------------
 SUPABASE_URL = "https://heuzgnhlrumyfcfigoon.supabase.co"
 SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
-BUCKET_NAME = "codes" # Updated to new bucket
-METADATA_BUCKET = "codes"
+BUCKET_NAME = "NucLigs_PDBs" # PDBs are here
+METADATA_BUCKET = "codes"      # Metadata Excel and app.py are here
 METADATA_FILENAME = "NucLigs_metadata.xlsx"
+SOURCE_FILENAME = "app.py"
 
 @st.cache_resource
 def init_supabase():
@@ -243,6 +244,16 @@ def load_metadata():
         return df
     except Exception:
         return pd.DataFrame()
+
+@st.cache_data(ttl=0)
+def fetch_source_code():
+    if not supabase: return None
+    try:
+        # Fetch app.py from 'codes' bucket
+        data_bytes = supabase.storage.from_(METADATA_BUCKET).download(SOURCE_FILENAME)
+        return data_bytes
+    except Exception:
+        return None
 
 @st.cache_data(ttl=0)
 def get_ids_from_metadata():
@@ -588,6 +599,22 @@ def render_database():
         st.markdown("**Viewer Settings**")
         bg_mode = st.radio("Background", ["Light", "Dark"], horizontal=True, label_visibility="collapsed")
         bg_color = "white" if bg_mode == "Light" else "#1e1e1e"
+        
+        # Download Source Code
+        st.divider()
+        st.markdown("**Developer Options**")
+        source_code = fetch_source_code()
+        if source_code:
+            st.download_button(
+                label="Download Source Code (app.py)",
+                data=source_code,
+                file_name="app.py",
+                mime="text/plain",
+                use_container_width=True
+            )
+        else:
+            st.button("Source Code Unavail.", disabled=True, use_container_width=True)
+            
         st.divider()
         st.caption(f"**Total Entries:** {len(all_nuc_ids)}")
 
