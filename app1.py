@@ -214,8 +214,9 @@ SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
 
 # BUCKET CONFIGURATION
 BUCKET_NAME = "NucLigs_PDBs"       # PDB files are here
-METADATA_BUCKET = "codes"          # Metadata Excel file is here
+METADATA_BUCKET = "codes"          # Metadata Excel files are here
 METADATA_FILENAME = "NucLigs_metadata.xlsx"
+METADATA_REF_FILENAME = "NucLigs_metadata_references.xlsx"
 
 @st.cache_resource
 def init_supabase():
@@ -227,7 +228,7 @@ def init_supabase():
 supabase = init_supabase()
 
 # ----------------------------------------------------
-# External URLs (Logo only)
+# External URLs
 # ----------------------------------------------------
 LOGO_URL = "https://raw.githubusercontent.com/tushar1298/qwertyui/main/NucLigs.png"
 
@@ -236,17 +237,29 @@ LOGO_URL = "https://raw.githubusercontent.com/tushar1298/qwertyui/main/NucLigs.p
 # ----------------------------------------------------
 @st.cache_data(ttl=0)
 def load_metadata():
-    """Fetch Metadata Excel directly from Supabase Storage (codes bucket)"""
     if not supabase: return pd.DataFrame()
     try:
-        # Download data as bytes
+        # Fetch Excel from 'codes' bucket using Supabase Storage
         data_bytes = supabase.storage.from_(METADATA_BUCKET).download(METADATA_FILENAME)
-        # Read into Pandas
         df = pd.read_excel(io.BytesIO(data_bytes))
         df.columns = [str(c).strip().lower() for c in df.columns]
         return df
     except Exception as e:
         st.sidebar.error(f"Error loading metadata from Supabase: {e}")
+        return pd.DataFrame()
+
+@st.cache_data(ttl=0)
+def load_references():
+    """Fetch References Excel directly from Supabase Storage (codes bucket)"""
+    if not supabase: return pd.DataFrame()
+    try:
+        data_bytes = supabase.storage.from_(METADATA_BUCKET).download(METADATA_REF_FILENAME)
+        df = pd.read_excel(io.BytesIO(data_bytes))
+        # Normalize columns: lower case and strip whitespace
+        df.columns = [str(c).strip().lower() for c in df.columns]
+        return df
+    except Exception:
+        # Return empty if file not found or error, to avoid breaking app
         return pd.DataFrame()
 
 @st.cache_data(ttl=0)
@@ -387,7 +400,7 @@ def render_homepage():
         st.markdown("""
         <div class="home-card">
             <h3>Data Accessibility</h3>
-            <p>Seamlessly retrieve standardized structural data. Export ligands and complexes in industry-standard formats (PDB, SDF, MOL2) to integrate directly with your local modeling workflows.</p>
+            <p>Seamlessly retrieve standardized structural data. Export ligands and complexes in industry-standard formats (PDB, SDF, MOL) to integrate directly with your local modeling workflows.</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -404,6 +417,7 @@ def render_homepage():
 
 def render_database():
     metadata_df = load_metadata()
+    refs_df = load_references()
     all_nuc_ids = get_ids_from_metadata()
     
     # Create Display Map: ID -> "Name (ID)"
@@ -651,10 +665,10 @@ def render_database():
             if mol_obj:
                 sdf_data = Chem.MolToMolBlock(mol_obj)
                 with d2: st.download_button("Download SDF", sdf_data, f"{selected_nuc_id}.sdf", "chemical/x-mdl-sdfile", use_container_width=True)
-                with d3: st.download_button("Download MOL2", sdf_data, f"{selected_nuc_id}.mol", "chemical/x-mdl-molfile", use_container_width=True)
+                with d3: st.download_button("Download MOL", sdf_data, f"{selected_nuc_id}.mol", "chemical/x-mdl-molfile", use_container_width=True)
             else:
                 with d2: st.button("SDF Unavail.", disabled=True, use_container_width=True)
-                with d3: st.button("MOL2 Unavail.", disabled=True, use_container_width=True)
+                with d3: st.button("MOL Unavail.", disabled=True, use_container_width=True)
             
             # Single CSV Download
             with d4:
@@ -666,7 +680,7 @@ def render_database():
         # --- RIGHT COLUMN: TABS FOR DETAILS ---
         with col_right:
             # Create tabs
-            tab_analysis, tab_metadata = st.tabs(["Chemical Analysis", "Metadata Record"])
+            tab_analysis, tab_metadata, tab_refs = st.tabs(["Chemical Analysis", "Metadata Record", "References"])
             
             # Tab 1: Chemical Analysis
             with tab_analysis:
@@ -729,6 +743,53 @@ def render_database():
                                 st.code(str(data[key]), language="text")
                 else:
                     st.info("No metadata found.")
+                st.markdown("</div>", unsafe_allow_html=True)
+
+            # Tab 3: References
+            with tab_refs:
+                st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
+                if data and not refs_df.empty:
+                    # Look for ChEMBL ID in main metadata
+                    chembl_id = None
+                    possible_keys = ['external_reference', 'chembl_id', 'chembl']
+                    for k in possible_keys:
+                        if k in data and str(data[k]).lower().startswith('chembl'):
+                            chembl_id = str(data[k])
+                            break
+                    
+                    if chembl_id:
+                        # Match in refs_df
+                        # Try exact match on 'chembl_id' column if it exists
+                        # We assume normalized columns, so 'chembl_id' should be there
+                        if 'chembl_id' in refs_df.columns:
+                            match = refs_df[refs_df['chembl_id'].astype(str) == chembl_id]
+                            
+                            if not match.empty:
+                                ref_data = match.iloc[0].to_dict()
+                                st.markdown('<div class="feature-card"><h5>Primary Reference</h5>', unsafe_allow_html=True)
+                                
+                                title = ref_data.get('title', 'N/A')
+                                doi = ref_data.get('doi', None)
+                                pubmed = ref_data.get('pubmed_id', 'N/A')
+                                
+                                st.markdown(f"**Title:** {title}")
+                                render_row("PubMed ID", str(pubmed))
+                                
+                                if doi and str(doi).lower() != 'nan':
+                                    doi_link = f"https://doi.org/{doi}"
+                                    st.markdown(f"**DOI:** <a href='{doi_link}' target='_blank'>{doi}</a>", unsafe_allow_html=True)
+                                else:
+                                    render_row("DOI", "Not Available")
+                                    
+                                st.markdown('</div>', unsafe_allow_html=True)
+                            else:
+                                st.info(f"No references found for ChEMBL ID: {chembl_id}")
+                        else:
+                            st.error("Reference file structure invalid: Missing 'chembl_id' column.")
+                    else:
+                        st.info("No linked ChEMBL ID found for this structure.")
+                else:
+                    st.info("References unavailable.")
                 st.markdown("</div>", unsafe_allow_html=True)
 
 # ----------------------------------------------------
