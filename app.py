@@ -15,7 +15,7 @@ SUPABASE_URL = "https://heuzgnhlrumyfcfigoon.supabase.co"
 SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
 
 BUCKET_NAME = "codes"
-SOURCE_FILENAME = "app1.py"
+SOURCE_FILENAME = "app.py"
 
 def main():
     try:
