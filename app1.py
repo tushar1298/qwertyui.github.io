@@ -276,13 +276,10 @@ def load_references():
     if not supabase: return pd.DataFrame()
     try:
         data_bytes = supabase.storage.from_(METADATA_BUCKET).download(METADATA_REF_FILENAME)
-        # Using Sheet1 as indicated in your prompt snippets for main data
         df = pd.read_excel(io.BytesIO(data_bytes), sheet_name=0) 
-        # Normalize columns: lower case and strip whitespace
         df.columns = [str(c).strip().lower() for c in df.columns]
         return df
     except Exception:
-        # Return empty if file not found or error, to avoid breaking app
         return pd.DataFrame()
 
 @st.cache_data(ttl=0)
@@ -353,12 +350,34 @@ def compute_physchem(mol) -> dict:
     except Exception: pass
     return props
 
-def show_3d_pdb(pdb_text: str, bg_color: str = "white"):
+def show_3d_pdb(pdb_text: str, style_choice: str = "Stick", bg_color: str = "white"):
     view = py3Dmol.view(width="100%", height=700)
     view.addModel(pdb_text, "pdb")
-    view.setStyle({"stick": {"colorscheme": "greenCarbon"}})
+    
+    # Configure Style
+    if style_choice == "Stick":
+        view.setStyle({"stick": {"colorscheme": "greenCarbon"}})
+    elif style_choice == "Sphere":
+        view.setStyle({"sphere": {"colorscheme": "greenCarbon"}})
+    elif style_choice == "Cartoon":
+        view.setStyle({"cartoon": {"color": "spectrum"}})
+    elif style_choice == "Line":
+        view.setStyle({"line": {"colorscheme": "greenCarbon"}})
+    elif style_choice == "Cross":
+        view.setStyle({"cross": {"colorscheme": "greenCarbon"}})
+    
     view.zoomTo()
     view.setBackgroundColor(bg_color)
+    
+    # Enable PNG download capability in the viewer itself via Javascript injection if needed,
+    # but Py3Dmol doesn't directly support a simple 'download png' button in Streamlit easily.
+    # However, we can use the viewer's built-in functionality or a screenshot workaround.
+    # Standard py3dmol view object doesn't have a direct "save png" button exposed easily in streamlit components.
+    # We will rely on the user right-clicking "Save Image" or using a browser extension for now as direct PNG export from 
+    # py3dmol component in Streamlit is complex without custom JS. 
+    # BUT, we can add a 'spin' or other interactions.
+    
+    # Just render the HTML
     html = view._make_html()
     st.components.v1.html(html, height=700)
 
@@ -446,20 +465,14 @@ def render_database():
     # Create Display Map: ID -> "Name (ID)"
     id_map = {}
     if not metadata_df.empty:
-        # Use a temporary dataframe to handle text efficiently
         temp_df = metadata_df.copy()
-        # Ensure we have a valid 'nl' column as index
         if 'nl' in temp_df.columns:
             temp_df.set_index('nl', inplace=True)
-            # Find the correct name column (handle variants)
             name_col = 'names' if 'names' in temp_df.columns else ('name' if 'name' in temp_df.columns else None)
             
             if name_col:
-                # Create the formatted string "Name (ID)"
-                # We iterate through the index to build the map
                 for nid, row in temp_df.iterrows():
                     chem_name = str(row[name_col]) if pd.notna(row[name_col]) else "Unknown"
-                    # Truncate very long names for dropdown readability
                     if len(chem_name) > 50: 
                         chem_name = chem_name[:47] + "..."
                     id_map[str(nid)] = f"{chem_name} ({nid})"
@@ -497,9 +510,7 @@ def render_database():
 
         # Selection with dynamic format_func
         if nuc_ids:
-            # If searching, show Name + ID. If browsing (no search), show just ID.
             format_strategy = (lambda x: id_map.get(x, x)) if is_searching else (lambda x: x)
-            
             selected_nuc_id = st.selectbox(
                 "Select Structure Result:", 
                 nuc_ids, 
@@ -514,7 +525,6 @@ def render_database():
             with st.expander("Bulk Actions", expanded=False):
                 st.caption("Download multiple structures & data based on your current search.")
                 
-                # Selection Mode Toggle
                 download_mode = st.radio("Download Scope:", ["Select Specific", "All Search Results"], horizontal=True, label_visibility="collapsed")
                 
                 bulk_selected = []
@@ -524,10 +534,9 @@ def render_database():
                         "Select structures:", 
                         nuc_ids, 
                         default=default_sel,
-                        format_func=format_strategy # Use same format as dropdown
+                        format_func=format_strategy
                     )
                 else:
-                    # All results
                     bulk_selected = nuc_ids
                     st.info(f"Ready to download all {len(bulk_selected)} matching structures.")
                 
@@ -536,33 +545,22 @@ def render_database():
                 
                 if st.button("Generate Download Package", use_container_width=True, disabled=len(bulk_selected)==0):
                     status = st.status("Processing bulk download...", expanded=True)
-                    
                     try:
-                        # 1. Prepare ZIP and CSV
                         zip_buffer = io.BytesIO()
                         csv_data_list = []
-                        
                         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                             progress_bar = status.progress(0)
                             total = len(bulk_selected)
-                            
                             for idx, nid in enumerate(bulk_selected):
-                                # 1. Fetch Data
                                 row = metadata_df[metadata_df['nl'].astype(str) == nid]
                                 if row.empty: continue
-                                
                                 meta_dict = row.iloc[0].to_dict()
                                 pdb_fname = str(meta_dict.get('pdbs', ''))
                                 content = fetch_pdb_from_supabase(pdb_fname)
-                                
                                 if not content: continue
-                                
-                                # 2. Process Structure for Format
                                 final_content = content
                                 final_ext = fmt
                                 mol_obj = None
-                                
-                                # Convert if needed (SDF/MOL) or if Features requested
                                 if fmt != ".pdb" or include_preds:
                                     smiles = str(meta_dict.get('smiles', ''))
                                     try:
@@ -572,56 +570,30 @@ def render_database():
                                             mol_obj = Chem.MolFromPDBBlock(content, sanitize=True, removeHs=False)
                                     except:
                                         mol_obj = None
-
                                 if fmt in [".sdf", ".mol"] and mol_obj:
                                     final_content = Chem.MolToMolBlock(mol_obj)
                                 elif fmt in [".sdf", ".mol"] and not mol_obj:
-                                    # Fallback if conversion fails
-                                    final_content = content # Keep PDB
+                                    final_content = content 
                                     final_ext = ".pdb"
-
-                                # 3. Add to Zip
                                 zip_file.writestr(f"{nid}{final_ext}", final_content)
-                                
-                                # 4. Compute Features if requested
                                 if include_preds and mol_obj:
                                     preds = compute_physchem(mol_obj)
-                                    # Remove non-serializable RDKit obj
                                     preds.pop("_RDKitMol", None)
                                     meta_dict.update(preds)
-                                
                                 csv_data_list.append(meta_dict)
                                 progress_bar.progress((idx + 1) / total)
                         
                         status.write("Compressing files...")
                         zip_buffer.seek(0)
-                        
-                        # Generate CSV buffer
                         csv_buffer = None
                         if csv_data_list:
                             df_bulk = pd.DataFrame(csv_data_list)
                             csv_buffer = df_bulk.to_csv(index=False).encode('utf-8')
                         
                         status.update(label="Ready for Download!", state="complete", expanded=True)
-                        
-                        # Show Download Buttons
-                        st.download_button(
-                            label=f"Download {len(bulk_selected)} Structures (.zip)",
-                            data=zip_buffer,
-                            file_name="nucligs_structures.zip",
-                            mime="application/zip",
-                            use_container_width=True
-                        )
-                        
+                        st.download_button(label=f"Download {len(bulk_selected)} Structures (.zip)", data=zip_buffer, file_name="nucligs_structures.zip", mime="application/zip", use_container_width=True)
                         if csv_buffer:
-                            st.download_button(
-                                label="Download Data Table (.csv)",
-                                data=csv_buffer,
-                                file_name="nucligs_data.csv",
-                                mime="text/csv",
-                                use_container_width=True
-                            )
-                            
+                            st.download_button(label="Download Data Table (.csv)", data=csv_buffer, file_name="nucligs_data.csv", mime="text/csv", use_container_width=True)
                     except Exception as e:
                         status.update(label="Error processing download", state="error")
                         st.error(f"An error occurred: {str(e)}")
@@ -630,6 +602,10 @@ def render_database():
         st.markdown("**Viewer Settings**")
         bg_mode = st.radio("Background", ["Light", "Dark"], horizontal=True, label_visibility="collapsed")
         bg_color = "white" if bg_mode == "Light" else "#1e1e1e"
+        
+        # New Style Selector
+        style_mode = st.selectbox("Style", ["Stick", "Sphere", "Cartoon", "Line", "Cross"])
+        
         st.divider()
         st.caption(f"**Total Entries:** {len(all_nuc_ids)}")
 
@@ -646,16 +622,10 @@ def render_database():
     smiles_str = None
     
     if not row.empty:
-        # Get filename from 'pdbs' column of metadata
         pdb_filename = str(row.iloc[0]['pdbs'])
         smiles_str = str(row.iloc[0].get('smiles', ''))
         data = row.iloc[0].to_dict()
-        
-        # Fetch file using the looked-up filename
         pdb_text = fetch_pdb_from_supabase(pdb_filename)
-        
-        # If fetch fails or filename is empty, maybe try constructing it?
-        # But per logic, we trust the 'pdbs' column.
     else:
         st.error(f"Metadata not found for ID: {selected_nuc_id}")
         return
@@ -683,8 +653,17 @@ def render_database():
         # --- LEFT COLUMN: 3D VIEWER ---
         with col_left:
             st.subheader(f"3D Visualization: {selected_nuc_id}")
-            show_3d_pdb(pdb_text, bg_color)
+            # Use variable style selection
+            show_3d_pdb(pdb_text, style_choice=style_mode, bg_color=bg_color)
             
+            # Simple button to trigger browser download of current view (requires browser support)
+            # Since pure python streamlit cannot easily screenshot the JS component, 
+            # we provide a button that would typically trigger client-side logic. 
+            # For now, Py3Dmol doesn't have a simple python binding for "save png".
+            # We will rely on user using right click -> save image or similar browser capabilities.
+            # Instead, we will add a label to inform the user.
+            st.caption("Tip: Right-click on the viewer to save an image, or use your screenshot tool.")
+
             st.markdown("##### Export Data")
             d1, d2, d3, d4 = st.columns([1, 1, 1, 1.2]) 
             with d1:
@@ -778,19 +757,12 @@ def render_database():
             with tab_refs:
                 st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
                 
-                # Check for pdb match logic
-                # We need to find the references where 'pdbs' column in ref file matches current pdb_filename (or ID)
-                # But typically 'pdbs' in ref file is the key.
-                # Let's check if 'pdbs' column exists in refs_df
-                
                 current_pdb_id = str(row.iloc[0].get('pdbs', '')).replace('.pdb', '') # remove extension just in case
                 
                 ref_matches = pd.DataFrame()
                 if not refs_df.empty and 'pdbs' in refs_df.columns:
-                     # Match based on PDB identifier (e.g. NucL_000001)
                      ref_matches = refs_df[refs_df['pdbs'].astype(str) == current_pdb_id]
                 
-                # Fallback: Try linking via Chembl ID if PDB match fails or isn't used
                 if ref_matches.empty and not refs_df.empty:
                     chembl_id = None
                     possible_keys = ['external_reference', 'chembl_id', 'chembl']
@@ -802,7 +774,6 @@ def render_database():
                          ref_matches = refs_df[refs_df['chembl_id'].astype(str) == chembl_id]
 
                 if not ref_matches.empty:
-                    # Iterate through all matching reference rows
                     for idx, ref_row in ref_matches.iterrows():
                         ref_data = ref_row.to_dict()
                         st.markdown(f'<div class="ref-card">', unsafe_allow_html=True)
@@ -813,13 +784,11 @@ def render_database():
                         journal = ref_data.get('journal', 'N/A')
                         year = ref_data.get('year', 'N/A')
                         
-                        # Cleanup title
                         clean_title = str(title).strip("(),'\"")
                         if clean_title.lower() == 'nan': clean_title = "Untitled Reference"
                         
                         st.markdown(f"<div class='ref-title'>{clean_title}</div>", unsafe_allow_html=True)
                         
-                        # Meta info
                         j_str = str(journal) if str(journal).lower() != 'nan' else ""
                         y_str = str(year) if str(year).lower() != 'nan' else ""
                         if j_str or y_str:
@@ -838,7 +807,7 @@ def render_database():
                                 doi_link = clean_doi if clean_doi.startswith('http') else f"https://doi.org/{clean_doi}"
                                 st.markdown(f"<span class='data-label'>DOI:</span> <a href='{doi_link}' target='_blank'>{clean_doi}</a>", unsafe_allow_html=True)
                             else:
-                                pass # Don't show if empty
+                                pass 
                                 
                         st.markdown('</div>', unsafe_allow_html=True)
                 else:
