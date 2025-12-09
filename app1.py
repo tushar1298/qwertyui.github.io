@@ -235,7 +235,7 @@ SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
 BUCKET_NAME = "NucLigs_PDBs"       # PDB files
 METADATA_BUCKET = "codes"          # Excel files
 METADATA_FILENAME = "NucLigs_metadata.xlsx"
-METADATA_REF_FILENAME = "NucLigs_metadata_references.xlsx"
+METADATA_REF_FILENAME = "chembl_references.xlsx"  # <— NEW references file
 
 @st.cache_resource
 def init_supabase():
@@ -271,7 +271,7 @@ def load_metadata():
 
 @st.cache_data(ttl=0)
 def load_references():
-    """Load references sheet, normalize column names."""
+    """Load ChEMBL reference sheet (chembl_references.xlsx), normalize columns."""
     if not supabase:
         return pd.DataFrame()
     try:
@@ -369,7 +369,6 @@ def show_3d_pdb(pdb_text: str, style_choice: str = "Stick", bg_color: str = "whi
     
     view.zoomTo()
     view.setBackgroundColor(bg_color)
-
     html = view._make_html()
     st.components.v1.html(html, height=700)
 
@@ -808,17 +807,16 @@ def render_database():
                     st.info("No metadata found.")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            # Tab 3: References – match ChEMBL ID between sheets
+            # Tab 3: References – use chembl_references.xlsx
             with tab_refs:
                 st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
 
-                # PDB label
+                # PDB label from metadata row
                 pdb_id = str(data.get('pdbs', 'Unknown')).strip()
 
-                # Get ChEMBL ID from metadata row
+                # Try to get ChEMBL ID from metadata row
                 chembl_id = None
-                chembl_keys = ['chembl_id', 'chemblid', 'chembl', 'chembl_id_']  # flexible
-
+                chembl_keys = ['chembl_id', 'chemblid', 'chembl', 'chembl_id_']
                 for k in chembl_keys:
                     if k in data and pd.notna(data[k]):
                         val = str(data[k]).strip()
@@ -826,7 +824,6 @@ def render_database():
                             chembl_id = val
                             break
 
-                # Normalize ChEMBL id
                 def norm_chembl(x: str) -> str:
                     s = str(x).strip().upper()
                     if not s:
@@ -838,7 +835,7 @@ def render_database():
 
                 chembl_norm = norm_chembl(chembl_id) if chembl_id else ""
 
-                # Header card for refs tab
+                # Header card
                 st.markdown(
                     f"""
                     <div class="id-card">
@@ -850,23 +847,35 @@ def render_database():
                     unsafe_allow_html=True
                 )
 
-                # Match refs_df by chembl_id
+                # Match rows in chembl_references.xlsx
                 ref_matches = pd.DataFrame()
-                if chembl_norm and not refs_df.empty and "chembl_id" in refs_df.columns:
-                    ref_matches = refs_df[
-                        refs_df["chembl_id"].astype(str).apply(norm_chembl) == chembl_norm
-                    ]
+                if not refs_df.empty:
+                    candidates = []
+
+                    # match by PDB if column present
+                    if 'pdbs' in refs_df.columns and pdb_id:
+                        pdb_mask = refs_df['pdbs'].astype(str).str.strip().str.upper() == pdb_id.upper()
+                        candidates.append(refs_df[pdb_mask])
+
+                    # match by ChEMBL if column present
+                    if chembl_norm and 'chembl_id' in refs_df.columns:
+                        chembl_mask = refs_df['chembl_id'].astype(str).apply(norm_chembl) == chembl_norm
+                        candidates.append(refs_df[chembl_mask])
+
+                    if candidates:
+                        ref_matches = pd.concat(candidates, ignore_index=True).drop_duplicates()
 
                 if not ref_matches.empty:
                     for idx, ref_row in ref_matches.iterrows():
                         ref_data = ref_row.to_dict()
                         st.markdown('<div class="ref-card">', unsafe_allow_html=True)
 
-                        title = ref_data.get('title', 'N/A')
-                        doi = ref_data.get('doi', None)
-                        pubmed = ref_data.get('pubmed_id', 'N/A')
-                        journal = ref_data.get('journal', 'N/A')
-                        year = ref_data.get('year', 'N/A')
+                        # Flexible column names for references
+                        title = ref_data.get('title', ref_data.get('reference_title', 'N/A'))
+                        journal = ref_data.get('journal', ref_data.get('journal_name', 'N/A'))
+                        year = ref_data.get('year', ref_data.get('publication_year', 'N/A'))
+                        doi = ref_data.get('doi', ref_data.get('doi_id', None))
+                        pubmed = ref_data.get('pubmed_id', ref_data.get('pmid', 'N/A'))
 
                         clean_title = str(title).strip("(),'\"")
                         if clean_title.lower() == 'nan':
@@ -879,6 +888,14 @@ def render_database():
                             meta_str = f"<b>{j_str}</b> ({y_str})"
                             st.markdown(f"<div class='ref-meta'>{meta_str}</div>", unsafe_allow_html=True)
 
+                        # Also show which PDB & ChEMBL this row is linked to (from refs file)
+                        row_pdb = ref_data.get('pdbs', pdb_id)
+                        row_chembl = ref_data.get('chembl_id', chembl_norm)
+                        st.markdown(
+                            f"<div class='ref-meta'>PDB: <b>{row_pdb}</b> &nbsp; | &nbsp; ChEMBL: <b>{row_chembl}</b></div>",
+                            unsafe_allow_html=True
+                        )
+
                         cols = st.columns([1, 2])
                         with cols[0]:
                             pm_str = str(pubmed).replace('.0', '')
@@ -888,7 +905,7 @@ def render_database():
                         with cols[1]:
                             if doi and str(doi).lower() != 'nan':
                                 clean_doi = str(doi).strip("(), ")
-                                doi_link = clean_doi if clean_doi.startswith('http') else f"https://doi.org/{clean_doi}"
+                                doi_link = clean_doi if clean_doi.startswith("http") else f"https://doi.org/{clean_doi}"
                                 st.markdown(
                                     f"<span class='data-label'>DOI:</span> "
                                     f"<a href='{doi_link}' target='_blank'>{clean_doi}</a>",
@@ -897,7 +914,7 @@ def render_database():
 
                         st.markdown('</div>', unsafe_allow_html=True)
                 else:
-                    st.info("No specific references found for this structure using the matched ChEMBL ID.")
+                    st.info("No references found in chembl_references.xlsx for this PDB / ChEMBL ID.")
 
                 st.markdown("</div>", unsafe_allow_html=True)
 
