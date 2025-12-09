@@ -235,7 +235,7 @@ SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
 BUCKET_NAME = "NucLigs_PDBs"       # PDB files
 METADATA_BUCKET = "codes"          # Excel files
 METADATA_FILENAME = "NucLigs_metadata.xlsx"
-METADATA_REF_FILENAME = "chembl_references.xlsx"  # <— NEW references file
+METADATA_REF_FILENAME = "references.xlsx"  # <— NEW references file
 
 @st.cache_resource
 def init_supabase():
