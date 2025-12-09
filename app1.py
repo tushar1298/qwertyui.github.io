@@ -354,17 +354,16 @@ def show_3d_pdb(pdb_text: str, style_choice: str = "Stick", bg_color: str = "whi
     view = py3Dmol.view(width="100%", height=700)
     view.addModel(pdb_text, "pdb")
     
-    # Configure Style
+    # Configure Style (Removed Cartoon & Cross as requested)
     if style_choice == "Stick":
         view.setStyle({"stick": {"colorscheme": "greenCarbon"}})
     elif style_choice == "Sphere":
         view.setStyle({"sphere": {"colorscheme": "greenCarbon"}})
-    elif style_choice == "Cartoon":
-        view.setStyle({"cartoon": {"color": "spectrum"}})
     elif style_choice == "Line":
         view.setStyle({"line": {"colorscheme": "greenCarbon"}})
-    elif style_choice == "Cross":
-        view.setStyle({"cross": {"colorscheme": "greenCarbon"}})
+    # Default fallback
+    else:
+        view.setStyle({"stick": {"colorscheme": "greenCarbon"}})
     
     view.zoomTo()
     view.setBackgroundColor(bg_color)
@@ -525,6 +524,7 @@ def render_database():
             with st.expander("Bulk Actions", expanded=False):
                 st.caption("Download multiple structures & data based on your current search.")
                 
+                # Selection Mode Toggle
                 download_mode = st.radio("Download Scope:", ["Select Specific", "All Search Results"], horizontal=True, label_visibility="collapsed")
                 
                 bulk_selected = []
@@ -603,8 +603,8 @@ def render_database():
         bg_mode = st.radio("Background", ["Light", "Dark"], horizontal=True, label_visibility="collapsed")
         bg_color = "white" if bg_mode == "Light" else "#1e1e1e"
         
-        # New Style Selector
-        style_mode = st.selectbox("Style", ["Stick", "Sphere", "Cartoon", "Line", "Cross"])
+        # New Style Selector (Simplified: Removed Cartoon & Cross)
+        style_mode = st.selectbox("Style", ["Stick", "Sphere", "Line"])
         
         st.divider()
         st.caption(f"**Total Entries:** {len(all_nuc_ids)}")
@@ -662,7 +662,13 @@ def render_database():
             # For now, Py3Dmol doesn't have a simple python binding for "save png".
             # We will rely on user using right click -> save image or similar browser capabilities.
             # Instead, we will add a label to inform the user.
-            st.caption("Tip: Right-click on the viewer to save an image, or use your screenshot tool.")
+            st.markdown("""
+                <div style="display: flex; justify-content: center; margin-top: 10px; margin-bottom: 20px;">
+                    <div style="background-color: #f0f2f6; padding: 10px; border-radius: 8px; font-size: 0.9rem; color: #555;">
+                        📷 <b>Save Snapshot:</b> Right-click on the viewer above and select "Save Image" to download a PNG.
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
             st.markdown("##### Export Data")
             d1, d2, d3, d4 = st.columns([1, 1, 1, 1.2]) 
