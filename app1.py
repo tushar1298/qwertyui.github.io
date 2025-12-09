@@ -406,7 +406,7 @@ def render_homepage():
             <img src="{LOGO_URL}" width="180" style="margin-bottom: 15px;">
             <h1 style='color: #2c3e50; margin-bottom: 0;'>NucLigs Database</h1>
             <p style='color: #666; font-size: 1.15rem; font-weight: 300;'>
-                The Premier Resource for Nucleic Acid Ligand Structures
+                The Premier Resource for Nucleoside and Nucleotide analog Structures
             </p>
         </div>
         """,
@@ -448,7 +448,7 @@ def render_homepage():
         st.markdown("""
         <div class="home-card">
             <h3>Data Accessibility</h3>
-            <p>Seamlessly retrieve standardized structural data. Export ligands and complexes in industry-standard formats (PDB, SDF, MOL) to integrate directly with your local modeling workflows.</p>
+            <p>Seamlessly retrieve standardized structural data. Export ligands and complexes in industry-standard formats (PDB, SDF, MOL2) to integrate directly with your local modeling workflows.</p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -715,7 +715,7 @@ def render_database():
                     )
                 with d3:
                     st.download_button(
-                        "Download MOL",
+                        "Download MOL2",
                         sdf_data,
                         f"{selected_nuc_id}.mol",
                         "chemical/x-mdl-molfile",
@@ -725,7 +725,7 @@ def render_database():
                 with d2:
                     st.button("SDF Unavail.", disabled=True, use_container_width=True)
                 with d3:
-                    st.button("MOL Unavail.", disabled=True, use_container_width=True)
+                    st.button("MOL2 Unavail.", disabled=True, use_container_width=True)
             
             with d4:
                 full_data = {**data, **physchem}
