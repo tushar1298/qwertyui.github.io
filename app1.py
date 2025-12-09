@@ -5,6 +5,8 @@ import pandas as pd
 import io
 import zipfile
 
+# Supabase imports
+# NOTE: You must run 'pip install supabase' to use this
 from supabase import create_client, Client
 
 from rdkit import Chem
@@ -28,7 +30,7 @@ st.markdown(
     <style>
     /* Global Container Padding */
     .block-container {
-        padding-top: 3.5rem;
+        padding-top: 3.5rem; /* Increased to ensure logo isn't cut off */
         padding-bottom: 3rem;
     }
 
@@ -232,16 +234,17 @@ st.markdown(
 SUPABASE_URL = "https://heuzgnhlrumyfcfigoon.supabase.co"
 SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
 
-BUCKET_NAME = "NucLigs_PDBs"       # PDB files
-METADATA_BUCKET = "codes"          # Excel files
+# BUCKET CONFIGURATION
+BUCKET_NAME = "NucLigs_PDBs"       # PDB files are here
+METADATA_BUCKET = "codes"          # Metadata Excel files are here
 METADATA_FILENAME = "NucLigs_metadata.xlsx"
-METADATA_REF_FILENAME = "chembl_references.xlsx"  # <— NEW references file
+METADATA_REF_FILENAME = "NucLigs_metadata_references.xlsx"
 
 @st.cache_resource
 def init_supabase():
     try:
         return create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception:
+    except Exception as e:
         return None
 
 supabase = init_supabase()
@@ -256,14 +259,12 @@ LOGO_URL = "https://raw.githubusercontent.com/tushar1298/qwertyui/main/NucLigs.p
 # ----------------------------------------------------
 @st.cache_data(ttl=0)
 def load_metadata():
-    """Load main metadata sheet, normalize column names."""
-    if not supabase:
-        return pd.DataFrame()
+    if not supabase: return pd.DataFrame()
     try:
+        # Fetch Excel from 'codes' bucket using Supabase Storage
         data_bytes = supabase.storage.from_(METADATA_BUCKET).download(METADATA_FILENAME)
         df = pd.read_excel(io.BytesIO(data_bytes))
-        # normalize: lowercase + spaces -> underscore
-        df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+        df.columns = [str(c).strip().lower() for c in df.columns]
         return df
     except Exception as e:
         st.sidebar.error(f"Error loading metadata from Supabase: {e}")
@@ -271,14 +272,13 @@ def load_metadata():
 
 @st.cache_data(ttl=0)
 def load_references():
-    """Load ChEMBL reference sheet (chembl_references.xlsx), normalize columns."""
-    if not supabase:
-        return pd.DataFrame()
+    """Fetch References Excel directly from Supabase Storage (codes bucket)"""
+    if not supabase: return pd.DataFrame()
     try:
         data_bytes = supabase.storage.from_(METADATA_BUCKET).download(METADATA_REF_FILENAME)
-        df = pd.read_excel(io.BytesIO(data_bytes), sheet_name=0)
-        # normalize: lowercase + spaces -> underscore
-        df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+        # Using Sheet1 (index 0) where the main data seems to be located
+        df = pd.read_excel(io.BytesIO(data_bytes), sheet_name=0) 
+        df.columns = [str(c).strip().lower() for c in df.columns]
         return df
     except Exception:
         return pd.DataFrame()
@@ -291,13 +291,12 @@ def get_ids_from_metadata():
     return []
 
 def fetch_pdb_from_supabase(filename_or_id: str) -> str | None:
-    if not supabase:
-        return None
+    if not supabase: return None
     try:
         filename = filename_or_id if filename_or_id.lower().endswith(".pdb") else f"{filename_or_id}.pdb"
         data_bytes = supabase.storage.from_(BUCKET_NAME).download(filename)
         return data_bytes.decode('utf-8')
-    except Exception:
+    except Exception as e:
         return None
 
 def calculate_esol(mol, logp, mw, rb, aromatic_rings):
@@ -312,8 +311,7 @@ def calculate_esol(mol, logp, mw, rb, aromatic_rings):
 
 def compute_physchem(mol) -> dict:
     props = {}
-    if mol is None:
-        return props
+    if mol is None: return props
     try:
         mw = Descriptors.MolWt(mol)
         logp = Crippen.MolLogP(mol)
@@ -340,7 +338,7 @@ def compute_physchem(mol) -> dict:
         props["LogP"] = f"{logp:.2f}"
         props["TPSA"] = f"{rdMolDescriptors.CalcTPSA(mol):.2f}"
         props["QED"] = f"{qed:.3f}"
-        props["ESOL (LogS)"] = f"{esol:.2f}" if esol is not None else "N/A"
+        props["ESOL (LogS)"] = f"{esol:.2f}" if esol else "N/A"
         props["H-Acc"] = h_acc
         props["H-Don"] = h_don
         props["Rot. Bonds"] = rb
@@ -350,57 +348,63 @@ def compute_physchem(mol) -> dict:
         props["F-Csp3"] = f"{rdMolDescriptors.CalcFractionCSP3(mol):.2f}"
         props["Lipinski Violations"] = violations
         props["_RDKitMol"] = mol
-    except Exception:
-        pass
+    except Exception: pass
     return props
 
 def show_3d_pdb(pdb_text: str, style_choice: str = "Stick", bg_color: str = "white"):
     view = py3Dmol.view(width="100%", height=700)
     view.addModel(pdb_text, "pdb")
     
+    # Configure Style (Removed Cartoon & Cross as requested)
     if style_choice == "Stick":
         view.setStyle({"stick": {"colorscheme": "greenCarbon"}})
     elif style_choice == "Sphere":
         view.setStyle({"sphere": {"colorscheme": "greenCarbon"}})
     elif style_choice == "Line":
         view.setStyle({"line": {"colorscheme": "greenCarbon"}})
+    # Default fallback
     else:
         view.setStyle({"stick": {"colorscheme": "greenCarbon"}})
     
     view.zoomTo()
     view.setBackgroundColor(bg_color)
+    
+    # Enable PNG download capability in the viewer itself via Javascript injection if needed,
+    # but Py3Dmol doesn't directly support a simple 'download png' button in Streamlit easily.
+    # However, we can use the viewer's built-in functionality or a screenshot workaround.
+    # Standard py3dmol view object doesn't have a direct "save png" button exposed easily in streamlit components.
+    # We will rely on the user right-clicking "Save Image" or using a browser extension for now as direct PNG export from 
+    # py3dmol component in Streamlit is complex without custom JS. 
+    # BUT, we can add a 'spin' or other interactions.
+    
+    # Just render the HTML
     html = view._make_html()
     st.components.v1.html(html, height=700)
 
 def render_row(label, value, ref=None, help_text=None):
     ref_html = f'<span class="reference-text">({ref})</span>' if ref else ''
-    st.markdown(
-        f"""<div class="data-row">
-               <span class="data-label">{label}</span>
-               <span class="data-value">{value}{ref_html}</span>
-           </div>""",
-        unsafe_allow_html=True
-    )
+    st.markdown(f"""<div class="data-row"><span class="data-label">{label}</span><span class="data-value">{value}{ref_html}</span></div>""", unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # PAGE RENDERERS
 # ----------------------------------------------------
+
 def render_homepage():
+    # Centered Header with HTML for precise control
     st.markdown(
         f"""
         <div style="text-align: center; padding-top: 10px;">
             <img src="{LOGO_URL}" width="180" style="margin-bottom: 15px;">
             <h1 style='color: #2c3e50; margin-bottom: 0;'>NucLigs Database</h1>
-            <p style='color: #666; font-size: 1.15rem; font-weight: 300;'>
-                The Premier Resource for Nucleic Acid Ligand Structures
-            </p>
+            <p style='color: #666; font-size: 1.15rem; font-weight: 300;'>The Premier Resource for Nucleic Acid Ligand Structures</p>
         </div>
-        """,
+        """, 
         unsafe_allow_html=True
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # About Section
     st.markdown("""
     <div style='background-color: #f8f9fa; padding: 30px; border-radius: 12px; border-left: 5px solid #4CAF50; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 40px;'>
         <h3 style='color: #2c3e50; margin-top: 0;'>About the Database</h3>
@@ -415,7 +419,9 @@ def render_homepage():
     </div>
     """, unsafe_allow_html=True)
     
+    # Feature Cards
     f1, f2, f3 = st.columns(3)
+    
     with f1:
         st.markdown("""
         <div class="home-card">
@@ -423,6 +429,7 @@ def render_homepage():
             <p>Interactive, high-fidelity rendering of ligand-target complexes using Py3Dmol. Inspect binding modes, molecular surfaces, and structural conformations in real-time directly within your browser.</p>
         </div>
         """, unsafe_allow_html=True)
+        
     with f2:
         st.markdown("""
         <div class="home-card">
@@ -430,6 +437,7 @@ def render_homepage():
             <p>Automated calculation of critical molecular descriptors. Access data on Molecular Weight, LogP, TPSA, and Lipinski's Rule of 5 compliance powered by the RDKit cheminformatics engine.</p>
         </div>
         """, unsafe_allow_html=True)
+        
     with f3:
         st.markdown("""
         <div class="home-card">
@@ -440,33 +448,32 @@ def render_homepage():
         
     st.markdown("<br><br>", unsafe_allow_html=True)
 
+    # Primary Action
     _, btn_col, _ = st.columns([1.5, 1, 1.5])
     with btn_col:
         if st.button("Explore the Collection", type="primary", use_container_width=True):
             st.session_state['page'] = 'database'
             st.rerun()
     
-    st.markdown(
-        "<div style='text-align: center; margin-top: 50px; color: #aaa; font-size: 0.85rem;'>© 2024 NucLigs Database Project • Version 2.2</div>",
-        unsafe_allow_html=True
-    )
+    st.markdown("<div style='text-align: center; margin-top: 50px; color: #aaa; font-size: 0.85rem;'>© 2024 NucLigs Database Project • Version 2.2</div>", unsafe_allow_html=True)
 
 def render_database():
     metadata_df = load_metadata()
     refs_df = load_references()
     all_nuc_ids = get_ids_from_metadata()
     
-    # Map ID -> "Name (ID)"
+    # Create Display Map: ID -> "Name (ID)"
     id_map = {}
     if not metadata_df.empty:
         temp_df = metadata_df.copy()
         if 'nl' in temp_df.columns:
             temp_df.set_index('nl', inplace=True)
             name_col = 'names' if 'names' in temp_df.columns else ('name' if 'name' in temp_df.columns else None)
+            
             if name_col:
                 for nid, row in temp_df.iterrows():
                     chem_name = str(row[name_col]) if pd.notna(row[name_col]) else "Unknown"
-                    if len(chem_name) > 50:
+                    if len(chem_name) > 50: 
                         chem_name = chem_name[:47] + "..."
                     id_map[str(nid)] = f"{chem_name} ({nid})"
 
@@ -479,18 +486,15 @@ def render_database():
         st.markdown("---")
         st.markdown("### Structure Finder")
 
-        search_query = st.text_input(
-            "Filter database:",
-            placeholder="Search NucL ID or Name...",
-            label_visibility="collapsed"
-        )
+        search_query = st.text_input("Filter database:", placeholder="Search NucL ID or Name...", label_visibility="collapsed")
         
+        # Filter Logic
         is_searching = False
         if search_query:
             is_searching = True
             q = search_query.lower()
             mask = (
-                metadata_df['nl'].astype(str).str.lower().str.contains(q, na=False) |
+                metadata_df['nl'].astype(str).str.lower().str.contains(q, na=False) | 
                 metadata_df['names'].astype(str).str.lower().str.contains(q, na=False)
             )
             filtered_matches = metadata_df[mask]['nl'].dropna().unique().tolist()
@@ -504,35 +508,32 @@ def render_database():
         else:
             nuc_ids = all_nuc_ids
 
+        # Selection with dynamic format_func
         if nuc_ids:
             format_strategy = (lambda x: id_map.get(x, x)) if is_searching else (lambda x: x)
             selected_nuc_id = st.selectbox(
-                "Select Structure Result:",
-                nuc_ids,
+                "Select Structure Result:", 
+                nuc_ids, 
                 index=0,
                 format_func=format_strategy
             )
         else:
             selected_nuc_id = None
         
-        # Bulk actions
+        # --- BULK ACTIONS (Enhanced) ---
         if nuc_ids:
             with st.expander("Bulk Actions", expanded=False):
                 st.caption("Download multiple structures & data based on your current search.")
                 
-                download_mode = st.radio(
-                    "Download Scope:",
-                    ["Select Specific", "All Search Results"],
-                    horizontal=True,
-                    label_visibility="collapsed"
-                )
+                # Selection Mode Toggle
+                download_mode = st.radio("Download Scope:", ["Select Specific", "All Search Results"], horizontal=True, label_visibility="collapsed")
                 
                 bulk_selected = []
                 if download_mode == "Select Specific":
                     default_sel = nuc_ids[:5] if len(nuc_ids) > 0 else []
                     bulk_selected = st.multiselect(
-                        "Select structures:",
-                        nuc_ids,
+                        "Select structures:", 
+                        nuc_ids, 
                         default=default_sel,
                         format_func=format_strategy
                     )
@@ -541,13 +542,9 @@ def render_database():
                     st.info(f"Ready to download all {len(bulk_selected)} matching structures.")
                 
                 fmt = st.selectbox("Format", [".pdb", ".sdf", ".mol"], index=0)
-                include_preds = st.checkbox(
-                    "Compute Features (Slower)",
-                    value=False,
-                    help="Runs RDKit calculation for every selected structure."
-                )
+                include_preds = st.checkbox("Compute Features (Slower)", value=False, help="Runs RDKit calculation for every selected structure.")
                 
-                if st.button("Generate Download Package", use_container_width=True, disabled=len(bulk_selected) == 0):
+                if st.button("Generate Download Package", use_container_width=True, disabled=len(bulk_selected)==0):
                     status = st.status("Processing bulk download...", expanded=True)
                     try:
                         zip_buffer = io.BytesIO()
@@ -557,13 +554,11 @@ def render_database():
                             total = len(bulk_selected)
                             for idx, nid in enumerate(bulk_selected):
                                 row = metadata_df[metadata_df['nl'].astype(str) == nid]
-                                if row.empty:
-                                    continue
+                                if row.empty: continue
                                 meta_dict = row.iloc[0].to_dict()
                                 pdb_fname = str(meta_dict.get('pdbs', ''))
                                 content = fetch_pdb_from_supabase(pdb_fname)
-                                if not content:
-                                    continue
+                                if not content: continue
                                 final_content = content
                                 final_ext = fmt
                                 mol_obj = None
@@ -597,21 +592,9 @@ def render_database():
                             csv_buffer = df_bulk.to_csv(index=False).encode('utf-8')
                         
                         status.update(label="Ready for Download!", state="complete", expanded=True)
-                        st.download_button(
-                            label=f"Download {len(bulk_selected)} Structures (.zip)",
-                            data=zip_buffer,
-                            file_name="nucligs_structures.zip",
-                            mime="application/zip",
-                            use_container_width=True
-                        )
+                        st.download_button(label=f"Download {len(bulk_selected)} Structures (.zip)", data=zip_buffer, file_name="nucligs_structures.zip", mime="application/zip", use_container_width=True)
                         if csv_buffer:
-                            st.download_button(
-                                label="Download Data Table (.csv)",
-                                data=csv_buffer,
-                                file_name="nucligs_data.csv",
-                                mime="text/csv",
-                                use_container_width=True
-                            )
+                            st.download_button(label="Download Data Table (.csv)", data=csv_buffer, file_name="nucligs_data.csv", mime="text/csv", use_container_width=True)
                     except Exception as e:
                         status.update(label="Error processing download", state="error")
                         st.error(f"An error occurred: {str(e)}")
@@ -621,16 +604,18 @@ def render_database():
         bg_mode = st.radio("Background", ["Light", "Dark"], horizontal=True, label_visibility="collapsed")
         bg_color = "white" if bg_mode == "Light" else "#1e1e1e"
         
+        # New Style Selector (Simplified: Removed Cartoon & Cross)
         style_mode = st.selectbox("Style", ["Stick", "Sphere", "Line"])
         
         st.divider()
         st.caption(f"**Total Entries:** {len(all_nuc_ids)}")
 
-    # Main content
+    # Main Content
     if not selected_nuc_id:
         st.info("Please search for or select a structure from the sidebar.")
         return
 
+    # Resolve Data
     row = metadata_df[metadata_df['nl'].astype(str) == selected_nuc_id]
     
     pdb_text = None
@@ -647,6 +632,7 @@ def render_database():
         return
 
     if pdb_text:
+        # Create Molecule
         mol = None
         if smiles_str and smiles_str.lower() != 'nan' and smiles_str.strip():
             try:
@@ -662,13 +648,22 @@ def render_database():
 
         physchem = compute_physchem(mol)
         
+        # New Layout: Two Columns (Viewer vs Tabs)
         col_left, col_right = st.columns([1.5, 1.0])
 
-        # LEFT: 3D
+        # --- LEFT COLUMN: 3D VIEWER ---
         with col_left:
             st.subheader(f"3D Visualization: {selected_nuc_id}")
+            # Use variable style selection
             show_3d_pdb(pdb_text, style_choice=style_mode, bg_color=bg_color)
             
+            # Simple button to trigger browser download of current view (requires browser support)
+            # Since pure python streamlit cannot easily screenshot the JS component, 
+            # we provide a button that would typically trigger client-side logic. 
+            # For now, Py3Dmol doesn't have a simple python binding for "save png".
+            # We will rely on the user right-clicking "Save Image" or using a browser extension for now as direct PNG export from 
+            # py3dmol component in Streamlit is complex without custom JS. 
+            # BUT, we can add a 'spin' or other interactions.
             st.markdown("""
                 <div style="display: flex; justify-content: center; margin-top: 10px; margin-bottom: 20px;">
                     <div style="background-color: #f0f2f6; padding: 10px; border-radius: 8px; font-size: 0.9rem; color: #555;">
@@ -680,53 +675,27 @@ def render_database():
             st.markdown("##### Export Data")
             d1, d2, d3, d4 = st.columns([1, 1, 1, 1.2]) 
             with d1:
-                st.download_button(
-                    "Download PDB",
-                    pdb_text,
-                    f"{selected_nuc_id}.pdb",
-                    "chemical/x-pdb",
-                    use_container_width=True
-                )
+                st.download_button("Download PDB", pdb_text, f"{selected_nuc_id}.pdb", "chemical/x-pdb", use_container_width=True)
             
             mol_obj = physchem.get("_RDKitMol")
             if mol_obj:
                 sdf_data = Chem.MolToMolBlock(mol_obj)
-                with d2:
-                    st.download_button(
-                        "Download SDF",
-                        sdf_data,
-                        f"{selected_nuc_id}.sdf",
-                        "chemical/x-mdl-sdfile",
-                        use_container_width=True
-                    )
-                with d3:
-                    st.download_button(
-                        "Download MOL",
-                        sdf_data,
-                        f"{selected_nuc_id}.mol",
-                        "chemical/x-mdl-molfile",
-                        use_container_width=True
-                    )
+                with d2: st.download_button("Download SDF", sdf_data, f"{selected_nuc_id}.sdf", "chemical/x-mdl-sdfile", use_container_width=True)
+                with d3: st.download_button("Download MOL", sdf_data, f"{selected_nuc_id}.mol", "chemical/x-mdl-molfile", use_container_width=True)
             else:
-                with d2:
-                    st.button("SDF Unavail.", disabled=True, use_container_width=True)
-                with d3:
-                    st.button("MOL Unavail.", disabled=True, use_container_width=True)
+                with d2: st.button("SDF Unavail.", disabled=True, use_container_width=True)
+                with d3: st.button("MOL Unavail.", disabled=True, use_container_width=True)
             
+            # Single CSV Download
             with d4:
                 full_data = {**data, **physchem}
                 full_data.pop("_RDKitMol", None)
                 csv_single = pd.DataFrame([full_data]).to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    "Data Profile (.csv)",
-                    csv_single,
-                    f"{selected_nuc_id}_data.csv",
-                    "text/csv",
-                    use_container_width=True
-                )
+                st.download_button("Data Profile (.csv)", csv_single, f"{selected_nuc_id}_data.csv", "text/csv", use_container_width=True)
 
-        # RIGHT: Tabs
+        # --- RIGHT COLUMN: TABS FOR DETAILS ---
         with col_right:
+            # Create tabs (Added References)
             tab_analysis, tab_metadata, tab_refs = st.tabs(["Chemical Analysis", "Metadata Record", "References"])
             
             # Tab 1: Chemical Analysis
@@ -744,15 +713,7 @@ def render_database():
                     badge_class = "badge-pass" if violations == 0 else "badge-fail"
                     badge_text = "PASS (0 Violations)" if violations == 0 else f"FAIL ({violations} Violations)"
                     
-                    st.markdown(
-                        f'<div class="feature-card">'
-                        f'<div style="display:flex; justify-content:space-between; align-items:center; '
-                        f'margin-bottom:10px; border-bottom: 2px solid #f0f2f6; padding-bottom:8px;">'
-                        f'<h5 style="margin:0; border:none; padding:0;">Rule of 5</h5>'
-                        f'<span class="{badge_class}">{badge_text}</span>'
-                        f'</div>',
-                        unsafe_allow_html=True
-                    )
+                    st.markdown(f'<div class="feature-card"><div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom: 2px solid #f0f2f6; padding-bottom:8px;"><h5 style="margin:0; border:none; padding:0;">Rule of 5</h5><span class="{badge_class}">{badge_text}</span></div>', unsafe_allow_html=True)
                     render_row("LogP", physchem.get("LogP", "-"), "≤ 5")
                     render_row("H-Donors", physchem.get("H-Don", "-"), "≤ 5")
                     render_row("H-Acceptors", physchem.get("H-Acc", "-"), "≤ 10")
@@ -782,14 +743,7 @@ def render_database():
                     nl_id = data.get('nl', 'Unknown')
                     chem_name = data.get('names', data.get('name', '')) 
                     
-                    st.markdown(
-                        f'<div class="id-card">'
-                        f'<div class="id-label">NucLigs Identifier</div>'
-                        f'<div class="id-value">{nl_id}</div>'
-                        f'<div class="id-sub">{chem_name}</div>'
-                        f'</div>',
-                        unsafe_allow_html=True
-                    )
+                    st.markdown(f'<div class="id-card"><div class="id-label">NucLigs Identifier</div><div class="id-value">{nl_id}</div><div class="id-sub">{chem_name}</div></div>', unsafe_allow_html=True)
 
                     st.markdown('<div class="feature-card"><h5>General Info</h5>', unsafe_allow_html=True)
                     exclude_fields = ['nl', 'names', 'name', 'pdbs', 'match', 'smiles', 'inchi', 'description', 'sequence']
@@ -807,123 +761,77 @@ def render_database():
                     st.info("No metadata found.")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            # Tab 3: References – use chembl_references.xlsx
+            # Tab 3: References (New Logic)
             with tab_refs:
                 st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
-
-                # PDB label from metadata row
-                pdb_id = str(data.get('pdbs', 'Unknown')).strip()
-
-                # Try to get ChEMBL ID from metadata row
+                
+                # Fetch chembl ID and filter the references by it
                 chembl_id = None
-                chembl_keys = ['chembl_id', 'chemblid', 'chembl', 'chembl_id_']
-                for k in chembl_keys:
-                    if k in data and pd.notna(data[k]):
-                        val = str(data[k]).strip()
-                        if val and val.lower() != 'nan':
-                            chembl_id = val
-                            break
+                possible_keys = ['external_reference', 'chembl_id', 'chembl']
+                
+                # Find chembl id in the metadata of the selected structure
+                for k in possible_keys:
+                    if k in data and str(data[k]).lower().startswith('chembl'):
+                        chembl_id = str(data[k])
+                        break
 
-                def norm_chembl(x: str) -> str:
-                    s = str(x).strip().upper()
-                    if not s:
-                        return ""
-                    s = s.replace("CHEMBL_", "CHEMBL").replace("CHEMBL ", "CHEMBL")
-                    if not s.startswith("CHEMBL"):
-                        s = "CHEMBL" + s.lstrip("_- ")
-                    return s
-
-                chembl_norm = norm_chembl(chembl_id) if chembl_id else ""
-
-                # Header card
-                st.markdown(
-                    f"""
-                    <div class="id-card">
-                        <div class="id-label">Structure (PDB)</div>
-                        <div class="id-value">{pdb_id}</div>
-                        <div class="id-sub">ChEMBL ID: {chembl_norm or 'N/A'}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-
-                # Match rows in chembl_references.xlsx
                 ref_matches = pd.DataFrame()
-                if not refs_df.empty:
-                    candidates = []
 
-                    # match by PDB if column present
-                    if 'pdbs' in refs_df.columns and pdb_id:
-                        pdb_mask = refs_df['pdbs'].astype(str).str.strip().str.upper() == pdb_id.upper()
-                        candidates.append(refs_df[pdb_mask])
-
-                    # match by ChEMBL if column present
-                    if chembl_norm and 'chembl_id' in refs_df.columns:
-                        chembl_mask = refs_df['chembl_id'].astype(str).apply(norm_chembl) == chembl_norm
-                        candidates.append(refs_df[chembl_mask])
-
-                    if candidates:
-                        ref_matches = pd.concat(candidates, ignore_index=True).drop_duplicates()
+                # If chembl_id found in metadata, filter references dataframe
+                if chembl_id and not refs_df.empty and 'chembl_id' in refs_df.columns:
+                     ref_matches = refs_df[refs_df['chembl_id'].astype(str) == chembl_id]
 
                 if not ref_matches.empty:
                     for idx, ref_row in ref_matches.iterrows():
                         ref_data = ref_row.to_dict()
-                        st.markdown('<div class="ref-card">', unsafe_allow_html=True)
-
-                        # Flexible column names for references
-                        title = ref_data.get('title', ref_data.get('reference_title', 'N/A'))
-                        journal = ref_data.get('journal', ref_data.get('journal_name', 'N/A'))
-                        year = ref_data.get('year', ref_data.get('publication_year', 'N/A'))
-                        doi = ref_data.get('doi', ref_data.get('doi_id', None))
-                        pubmed = ref_data.get('pubmed_id', ref_data.get('pmid', 'N/A'))
-
+                        st.markdown(f'<div class="ref-card">', unsafe_allow_html=True)
+                        
+                        title = ref_data.get('title', 'N/A')
+                        doi = ref_data.get('doi', None)
+                        pubmed = ref_data.get('pubmed_id', 'N/A')
+                        journal = ref_data.get('journal', 'N/A')
+                        year = ref_data.get('year', 'N/A')
+                        
                         clean_title = str(title).strip("(),'\"")
-                        if clean_title.lower() == 'nan':
-                            clean_title = "Untitled Reference"
+                        if clean_title.lower() == 'nan': clean_title = "Untitled Reference"
+                        
                         st.markdown(f"<div class='ref-title'>{clean_title}</div>", unsafe_allow_html=True)
-
+                        
                         j_str = str(journal) if str(journal).lower() != 'nan' else ""
                         y_str = str(year) if str(year).lower() != 'nan' else ""
                         if j_str or y_str:
                             meta_str = f"<b>{j_str}</b> ({y_str})"
                             st.markdown(f"<div class='ref-meta'>{meta_str}</div>", unsafe_allow_html=True)
 
-                        # Also show which PDB & ChEMBL this row is linked to (from refs file)
-                        row_pdb = ref_data.get('pdbs', pdb_id)
-                        row_chembl = ref_data.get('chembl_id', chembl_norm)
-                        st.markdown(
-                            f"<div class='ref-meta'>PDB: <b>{row_pdb}</b> &nbsp; | &nbsp; ChEMBL: <b>{row_chembl}</b></div>",
-                            unsafe_allow_html=True
-                        )
-
                         cols = st.columns([1, 2])
                         with cols[0]:
                             pm_str = str(pubmed).replace('.0', '')
                             if pm_str.lower() != 'nan':
                                 render_row("PubMed", pm_str)
-
+                        
                         with cols[1]:
                             if doi and str(doi).lower() != 'nan':
                                 clean_doi = str(doi).strip("(), ")
-                                doi_link = clean_doi if clean_doi.startswith("http") else f"https://doi.org/{clean_doi}"
-                                st.markdown(
-                                    f"<span class='data-label'>DOI:</span> "
-                                    f"<a href='{doi_link}' target='_blank'>{clean_doi}</a>",
-                                    unsafe_allow_html=True
-                                )
-
+                                doi_link = clean_doi if clean_doi.startswith('http') else f"https://doi.org/{clean_doi}"
+                                st.markdown(f"<span class='data-label'>DOI:</span> <a href='{doi_link}' target='_blank'>{clean_doi}</a>", unsafe_allow_html=True)
+                            else:
+                                pass 
+                                
                         st.markdown('</div>', unsafe_allow_html=True)
                 else:
-                    st.info("No references found in chembl_references.xlsx for this PDB / ChEMBL ID.")
-
+                    st.info("No specific references found for this structure.")
+                
                 st.markdown("</div>", unsafe_allow_html=True)
 
 # ----------------------------------------------------
 # MAIN ROUTER
 # ----------------------------------------------------
+
+# Initialize Session State
 if 'page' not in st.session_state:
     st.session_state['page'] = 'home'
 
+# Route
 if st.session_state['page'] == 'home':
     render_homepage()
 else:
