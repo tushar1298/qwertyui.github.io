@@ -72,6 +72,25 @@ st.markdown(
         border-bottom: 2px solid #f0f2f6;
         padding-bottom: 8px;
     }
+    
+    /* Reference Card specific styling */
+    .ref-card {
+        background-color: #fcfcfc;
+        border-left: 4px solid #3498db;
+        padding: 10px 15px;
+        margin-bottom: 12px;
+        border-radius: 4px;
+    }
+    .ref-title {
+        font-weight: 600;
+        color: #2c3e50;
+        margin-bottom: 5px;
+        font-size: 0.95rem;
+    }
+    .ref-meta {
+        font-size: 0.85rem;
+        color: #666;
+    }
 
     /* ID Highlight Card */
     .id-card {
@@ -762,26 +781,42 @@ def render_database():
                         # Try exact match on 'chembl_id' column if it exists
                         # We assume normalized columns, so 'chembl_id' should be there
                         if 'chembl_id' in refs_df.columns:
+                            # Use filtering to get all rows
                             match = refs_df[refs_df['chembl_id'].astype(str) == chembl_id]
                             
                             if not match.empty:
-                                ref_data = match.iloc[0].to_dict()
-                                st.markdown('<div class="feature-card"><h5>Primary Reference</h5>', unsafe_allow_html=True)
-                                
-                                title = ref_data.get('title', 'N/A')
-                                doi = ref_data.get('doi', None)
-                                pubmed = ref_data.get('pubmed_id', 'N/A')
-                                
-                                st.markdown(f"**Title:** {title}")
-                                render_row("PubMed ID", str(pubmed))
-                                
-                                if doi and str(doi).lower() != 'nan':
-                                    doi_link = f"https://doi.org/{doi}"
-                                    st.markdown(f"**DOI:** <a href='{doi_link}' target='_blank'>{doi}</a>", unsafe_allow_html=True)
-                                else:
-                                    render_row("DOI", "Not Available")
+                                for idx, row in match.iterrows():
+                                    ref_data = row.to_dict()
+                                    st.markdown(f'<div class="ref-card">', unsafe_allow_html=True)
                                     
-                                st.markdown('</div>', unsafe_allow_html=True)
+                                    title = ref_data.get('title', 'N/A')
+                                    doi = ref_data.get('doi', None)
+                                    pubmed = ref_data.get('pubmed_id', 'N/A')
+                                    journal = ref_data.get('journal', 'N/A')
+                                    year = ref_data.get('year', 'N/A')
+                                    
+                                    # Handle string truncation or cleaning if needed
+                                    clean_title = str(title).strip("(),'\"")
+                                    
+                                    st.markdown(f"<div class='ref-title'>{clean_title}</div>", unsafe_allow_html=True)
+                                    
+                                    meta_str = f"<b>{journal}</b> ({year})"
+                                    st.markdown(f"<div class='ref-meta'>{meta_str}</div>", unsafe_allow_html=True)
+
+                                    cols = st.columns([1, 2])
+                                    with cols[0]:
+                                        render_row("PubMed", str(pubmed).replace('.0', ''))
+                                    
+                                    with cols[1]:
+                                        if doi and str(doi).lower() != 'nan':
+                                            # Clean DOI link
+                                            clean_doi = str(doi).strip("(), ")
+                                            doi_link = clean_doi if clean_doi.startswith('http') else f"https://doi.org/{clean_doi}"
+                                            st.markdown(f"<span class='data-label'>DOI:</span> <a href='{doi_link}' target='_blank'>{clean_doi}</a>", unsafe_allow_html=True)
+                                        else:
+                                            st.markdown("<span class='data-label'>DOI:</span> N/A", unsafe_allow_html=True)
+                                            
+                                    st.markdown('</div>', unsafe_allow_html=True)
                             else:
                                 st.info(f"No references found for ChEMBL ID: {chembl_id}")
                         else:
