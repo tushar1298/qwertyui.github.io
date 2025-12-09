@@ -77,19 +77,22 @@ st.markdown(
     .ref-card {
         background-color: #fcfcfc;
         border-left: 4px solid #3498db;
-        padding: 10px 15px;
-        margin-bottom: 12px;
-        border-radius: 4px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 6px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
     .ref-title {
-        font-weight: 600;
+        font-weight: 700;
         color: #2c3e50;
-        margin-bottom: 5px;
-        font-size: 0.95rem;
+        margin-bottom: 8px;
+        font-size: 1.0rem;
+        line-height: 1.4;
     }
     .ref-meta {
         font-size: 0.85rem;
-        color: #666;
+        color: #555;
+        margin-bottom: 8px;
     }
 
     /* ID Highlight Card */
@@ -273,7 +276,8 @@ def load_references():
     if not supabase: return pd.DataFrame()
     try:
         data_bytes = supabase.storage.from_(METADATA_BUCKET).download(METADATA_REF_FILENAME)
-        df = pd.read_excel(io.BytesIO(data_bytes))
+        # Using Sheet1 as indicated in your prompt snippets for main data
+        df = pd.read_excel(io.BytesIO(data_bytes), sheet_name=0) 
         # Normalize columns: lower case and strip whitespace
         df.columns = [str(c).strip().lower() for c in df.columns]
         return df
@@ -642,10 +646,16 @@ def render_database():
     smiles_str = None
     
     if not row.empty:
+        # Get filename from 'pdbs' column of metadata
         pdb_filename = str(row.iloc[0]['pdbs'])
         smiles_str = str(row.iloc[0].get('smiles', ''))
         data = row.iloc[0].to_dict()
+        
+        # Fetch file using the looked-up filename
         pdb_text = fetch_pdb_from_supabase(pdb_filename)
+        
+        # If fetch fails or filename is empty, maybe try constructing it?
+        # But per logic, we trust the 'pdbs' column.
     else:
         st.error(f"Metadata not found for ID: {selected_nuc_id}")
         return
@@ -698,7 +708,7 @@ def render_database():
 
         # --- RIGHT COLUMN: TABS FOR DETAILS ---
         with col_right:
-            # Create tabs
+            # Create tabs (Added References)
             tab_analysis, tab_metadata, tab_refs = st.tabs(["Chemical Analysis", "Metadata Record", "References"])
             
             # Tab 1: Chemical Analysis
@@ -764,67 +774,76 @@ def render_database():
                     st.info("No metadata found.")
                 st.markdown("</div>", unsafe_allow_html=True)
 
-            # Tab 3: References
+            # Tab 3: References (New Logic)
             with tab_refs:
                 st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
-                if data and not refs_df.empty:
-                    # Look for ChEMBL ID in main metadata
+                
+                # Check for pdb match logic
+                # We need to find the references where 'pdbs' column in ref file matches current pdb_filename (or ID)
+                # But typically 'pdbs' in ref file is the key.
+                # Let's check if 'pdbs' column exists in refs_df
+                
+                current_pdb_id = str(row.iloc[0].get('pdbs', '')).replace('.pdb', '') # remove extension just in case
+                
+                ref_matches = pd.DataFrame()
+                if not refs_df.empty and 'pdbs' in refs_df.columns:
+                     # Match based on PDB identifier (e.g. NucL_000001)
+                     ref_matches = refs_df[refs_df['pdbs'].astype(str) == current_pdb_id]
+                
+                # Fallback: Try linking via Chembl ID if PDB match fails or isn't used
+                if ref_matches.empty and not refs_df.empty:
                     chembl_id = None
                     possible_keys = ['external_reference', 'chembl_id', 'chembl']
                     for k in possible_keys:
                         if k in data and str(data[k]).lower().startswith('chembl'):
                             chembl_id = str(data[k])
                             break
-                    
-                    if chembl_id:
-                        # Match in refs_df
-                        # Try exact match on 'chembl_id' column if it exists
-                        # We assume normalized columns, so 'chembl_id' should be there
-                        if 'chembl_id' in refs_df.columns:
-                            # Use filtering to get all rows
-                            match = refs_df[refs_df['chembl_id'].astype(str) == chembl_id]
-                            
-                            if not match.empty:
-                                for idx, row in match.iterrows():
-                                    ref_data = row.to_dict()
-                                    st.markdown(f'<div class="ref-card">', unsafe_allow_html=True)
-                                    
-                                    title = ref_data.get('title', 'N/A')
-                                    doi = ref_data.get('doi', None)
-                                    pubmed = ref_data.get('pubmed_id', 'N/A')
-                                    journal = ref_data.get('journal', 'N/A')
-                                    year = ref_data.get('year', 'N/A')
-                                    
-                                    # Handle string truncation or cleaning if needed
-                                    clean_title = str(title).strip("(),'\"")
-                                    
-                                    st.markdown(f"<div class='ref-title'>{clean_title}</div>", unsafe_allow_html=True)
-                                    
-                                    meta_str = f"<b>{journal}</b> ({year})"
-                                    st.markdown(f"<div class='ref-meta'>{meta_str}</div>", unsafe_allow_html=True)
+                    if chembl_id and 'chembl_id' in refs_df.columns:
+                         ref_matches = refs_df[refs_df['chembl_id'].astype(str) == chembl_id]
 
-                                    cols = st.columns([1, 2])
-                                    with cols[0]:
-                                        render_row("PubMed", str(pubmed).replace('.0', ''))
-                                    
-                                    with cols[1]:
-                                        if doi and str(doi).lower() != 'nan':
-                                            # Clean DOI link
-                                            clean_doi = str(doi).strip("(), ")
-                                            doi_link = clean_doi if clean_doi.startswith('http') else f"https://doi.org/{clean_doi}"
-                                            st.markdown(f"<span class='data-label'>DOI:</span> <a href='{doi_link}' target='_blank'>{clean_doi}</a>", unsafe_allow_html=True)
-                                        else:
-                                            st.markdown("<span class='data-label'>DOI:</span> N/A", unsafe_allow_html=True)
-                                            
-                                    st.markdown('</div>', unsafe_allow_html=True)
+                if not ref_matches.empty:
+                    # Iterate through all matching reference rows
+                    for idx, ref_row in ref_matches.iterrows():
+                        ref_data = ref_row.to_dict()
+                        st.markdown(f'<div class="ref-card">', unsafe_allow_html=True)
+                        
+                        title = ref_data.get('title', 'N/A')
+                        doi = ref_data.get('doi', None)
+                        pubmed = ref_data.get('pubmed_id', 'N/A')
+                        journal = ref_data.get('journal', 'N/A')
+                        year = ref_data.get('year', 'N/A')
+                        
+                        # Cleanup title
+                        clean_title = str(title).strip("(),'\"")
+                        if clean_title.lower() == 'nan': clean_title = "Untitled Reference"
+                        
+                        st.markdown(f"<div class='ref-title'>{clean_title}</div>", unsafe_allow_html=True)
+                        
+                        # Meta info
+                        j_str = str(journal) if str(journal).lower() != 'nan' else ""
+                        y_str = str(year) if str(year).lower() != 'nan' else ""
+                        if j_str or y_str:
+                            meta_str = f"<b>{j_str}</b> ({y_str})"
+                            st.markdown(f"<div class='ref-meta'>{meta_str}</div>", unsafe_allow_html=True)
+
+                        cols = st.columns([1, 2])
+                        with cols[0]:
+                            pm_str = str(pubmed).replace('.0', '')
+                            if pm_str.lower() != 'nan':
+                                render_row("PubMed", pm_str)
+                        
+                        with cols[1]:
+                            if doi and str(doi).lower() != 'nan':
+                                clean_doi = str(doi).strip("(), ")
+                                doi_link = clean_doi if clean_doi.startswith('http') else f"https://doi.org/{clean_doi}"
+                                st.markdown(f"<span class='data-label'>DOI:</span> <a href='{doi_link}' target='_blank'>{clean_doi}</a>", unsafe_allow_html=True)
                             else:
-                                st.info(f"No references found for ChEMBL ID: {chembl_id}")
-                        else:
-                            st.error("Reference file structure invalid: Missing 'chembl_id' column.")
-                    else:
-                        st.info("No linked ChEMBL ID found for this structure.")
+                                pass # Don't show if empty
+                                
+                        st.markdown('</div>', unsafe_allow_html=True)
                 else:
-                    st.info("References unavailable.")
+                    st.info("No specific references found for this structure.")
+                
                 st.markdown("</div>", unsafe_allow_html=True)
 
 # ----------------------------------------------------
