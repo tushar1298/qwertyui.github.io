@@ -12,8 +12,8 @@ from supabase import create_client
 # Configuration
 # Tip: For extra security in production, store these in Streamlit Secrets (st.secrets)
 
-NEXT_PUBLIC_SUPABASE_URL="https://heuzgnhlrumyfcfigoon.supabase.co"
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY="sb_publishable_AM951Hs4gISMnct_hoTOkA_CnjMPj97"
+SUPABASE_URL = "https://heuzgnhlrumyfcfigoon.supabase.co"
+SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
 
 
 BUCKET_NAME = "codes"
