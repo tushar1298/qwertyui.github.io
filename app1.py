@@ -243,8 +243,8 @@ st.markdown(
 # ----------------------------------------------------
 # Supabase Configuration
 # ----------------------------------------------------
-NEXT_PUBLIC_SUPABASE_URL=https://heuzgnhlrumyfcfigoon.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY=sb_publishable_AM951Hs4gISMnct_hoTOkA_CnjMPj97
+NEXT_PUBLIC_SUPABASE_URL="https://heuzgnhlrumyfcfigoon.supabase.co"
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY="sb_publishable_AM951Hs4gISMnct_hoTOkA_CnjMPj97"
 
 BUCKET_NAME = "NucLigs_PDBs"
 METADATA_BUCKET = "codes"
