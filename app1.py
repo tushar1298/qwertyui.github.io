@@ -243,8 +243,10 @@ st.markdown(
 # ----------------------------------------------------
 # Supabase Configuration
 # ----------------------------------------------------
-SUPABASE_URL = "https://heuzgnhlrumyfcfigoon.supabase.co"
-SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
+
+NEXT_PUBLIC_SUPABASE_URL="https://heuzgnhlrumyfcfigoon.supabase.co"
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY="sb_publishable_AM951Hs4gISMnct_hoTOkA_CnjMPj97"
+
 
 BUCKET_NAME = "NucLigs_PDBs"
 METADATA_BUCKET = "codes"
@@ -254,7 +256,7 @@ METADATA_REF_FILENAME = "references.xlsx"
 @st.cache_resource
 def init_supabase():
     try:
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
+        return create_client(NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY)
     except Exception:
         return None
 
@@ -483,6 +485,21 @@ def render_homepage():
     
     st.markdown(
         "<div style='text-align: center; margin-top: 50px; color: #aaa; font-size: 0.85rem;'>© 2024 NucLigs Database Project • Version 2.2</div>",
+        unsafe_allow_html=True
+    )
+def render_link_row(label, value, base_url):
+    """Render a clickable external database link."""
+    if not value or str(value).lower() == "nan":
+        return
+    st.markdown(
+        f"""
+        <div class="data-row">
+            <span class="data-label">{label}</span>
+            <span class="data-value">
+                <a href="{base_url}{value}" target="_blank">{value}</a>
+            </span>
+        </div>
+        """,
         unsafe_allow_html=True
     )
 
@@ -799,36 +816,70 @@ def render_database():
             st.markdown("</div>", unsafe_allow_html=True)
 
         # Tab 2: Metadata
-        with tab_metadata:
-            st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
-            if data:
-                nl_id = data.get('nl', 'Unknown')
-                chem_name = data.get('names', data.get('name', '')) 
-                
-                st.markdown(
-                    f'<div class="id-card">'
-                    f'<div class="id-label">NucLigs Identifier</div>'
-                    f'<div class="id-value">{nl_id}</div>'
-                    f'<div class="id-sub">{chem_name}</div>'
-                    f'</div>',
-                    unsafe_allow_html=True
-                )
+with tab_metadata:
+    st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
+    if data:
+        nl_id = data.get('nl', 'Unknown')
+        chem_name = data.get('names', data.get('name', '')) 
+        
+        st.markdown(
+            f'<div class="id-card">'
+            f'<div class="id-label">NucLigs Identifier</div>'
+            f'<div class="id-value">{nl_id}</div>'
+            f'<div class="id-sub">{chem_name}</div>'
+            f'</div>',
+            unsafe_allow_html=True
+        )
 
-                st.markdown('<div class="feature-card"><h5>General Info</h5>', unsafe_allow_html=True)
-                exclude_fields = ['nl', 'names', 'name', 'pdbs', 'match', 'smiles', 'inchi', 'description', 'sequence']
-                for key, value in data.items():
-                    if key not in exclude_fields and str(value).lower() != 'nan':
-                        render_row(key.replace('_', ' ').title(), str(value))
-                st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="feature-card"><h5>General Info</h5>', unsafe_allow_html=True)
 
-                long_fields = ["smiles", "inchi", "description", "sequence"]
-                for key in long_fields:
-                    if key in data and str(data[key]).lower() != 'nan':
-                        with st.expander(key.upper(), expanded=False):
-                            st.code(str(data[key]), language="text")
-            else:
-                st.info("No metadata found.")
-            st.markdown("</div>", unsafe_allow_html=True)
+        # ---- Clickable External IDs ----
+        pubchem_id = data.get("pubchem_id")
+        drugbank_id = data.get("drugbank_id")
+        chembl_id = data.get("chembl_id")
+
+        render_link_row(
+            "PubChem ID",
+            pubchem_id,
+            "https://pubchem.ncbi.nlm.nih.gov/compound/"
+        )
+
+        render_link_row(
+            "DrugBank ID",
+            drugbank_id,
+            "https://go.drugbank.com/drugs/"
+        )
+
+        render_link_row(
+            "ChEMBL ID",
+            chembl_id,
+            "https://www.ebi.ac.uk/chembl/compound_report_card/"
+        )
+
+        # ---- Other metadata fields (non-link) ----
+        exclude_fields = [
+            'nl', 'names', 'name', 'pdbs', 'match',
+            'smiles', 'inchi', 'description', 'sequence',
+            'pubchem_id', 'drugbank_id', 'chembl_id'
+        ]
+
+        for key, value in data.items():
+            if key in exclude_fields:
+                continue
+            if str(value).lower() != 'nan':
+                render_row(key.replace('_', ' ').title(), str(value))
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+        long_fields = ["smiles", "inchi", "description", "sequence"]
+        for key in long_fields:
+            if key in data and str(data[key]).lower() != 'nan':
+                with st.expander(key.upper(), expanded=False):
+                    st.code(str(data[key]), language="text")
+    else:
+        st.info("No metadata found.")
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
         # Tab 3: References
         with tab_refs:
