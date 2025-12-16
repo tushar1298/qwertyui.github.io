@@ -882,7 +882,7 @@ with tab_metadata:
 
 
         # Tab 3: References
-        with tab_refs:
+    with tab_refs:
             st.markdown('<div class="meta-scroll">', unsafe_allow_html=True)
 
             pdb_id = str(data.get('pdbs', 'Unknown')).strip()
