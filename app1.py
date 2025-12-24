@@ -239,7 +239,7 @@ SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
 BUCKET_NAME = "NucLigs_PDBs"       # PDB files are here
 METADATA_BUCKET = "codes"          # Metadata Excel files are here
 METADATA_FILENAME = "NucLigs_metadata.xlsx"
-METADATA_REF_FILENAME = "references.xlsx"
+METADATA_REF_FILENAME = "references.xlsx" # Updated to references.xlsx
 
 @st.cache_resource
 def init_supabase():
@@ -265,7 +265,7 @@ def load_metadata():
         # Fetch Excel from 'codes' bucket using Supabase Storage
         data_bytes = supabase.storage.from_(METADATA_BUCKET).download(METADATA_FILENAME)
         df = pd.read_excel(io.BytesIO(data_bytes))
-        df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+        df.columns = [str(c).strip().lower() for c in df.columns]
         return df
     except Exception as e:
         st.sidebar.error(f"Error loading metadata from Supabase: {e}")
@@ -277,9 +277,9 @@ def load_references():
     if not supabase: return pd.DataFrame()
     try:
         data_bytes = supabase.storage.from_(METADATA_BUCKET).download(METADATA_REF_FILENAME)
-        # Using Sheet1 (index 0) where the main data seems to be located
+        # Using Sheet1 (index 0) based on your confirmation
         df = pd.read_excel(io.BytesIO(data_bytes), sheet_name=0) 
-        df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+        df.columns = [str(c).strip().lower() for c in df.columns]
         return df
     except Exception:
         return pd.DataFrame()
@@ -339,7 +339,7 @@ def compute_physchem(mol) -> dict:
         props["LogP"] = f"{logp:.2f}"
         props["TPSA"] = f"{rdMolDescriptors.CalcTPSA(mol):.2f}"
         props["QED"] = f"{qed:.3f}"
-        props["ESOL (LogS)"] = f"{esol:.2f}" if esol else "N/A"
+        props["ESOL (LogS)"] = f"{esol:.2f}" if esol is not None else "N/A"
         props["H-Acc"] = h_acc
         props["H-Don"] = h_don
         props["Rot. Bonds"] = rb
@@ -803,10 +803,19 @@ def render_database():
                 
                 # Fetch chembl ID and filter the references by it
                 chembl_id = None
+                pubchem_id = None # Added PubChem
+                
                 possible_keys = ['external_reference', 'chembl_id', 'chembl']
                 for k in possible_keys:
                     if k in data and str(data[k]).lower().startswith('chembl'):
                         chembl_id = str(data[k])
+                        break
+                        
+                # Look for PubChem ID in metadata
+                pubchem_keys = ['pubchem_id', 'pubchem', 'pubchemid']
+                for k in pubchem_keys:
+                    if k in data and pd.notna(data[k]):
+                        pubchem_id = str(data[k]).strip()
                         break
 
                 ref_matches = pd.DataFrame()
@@ -817,10 +826,7 @@ def render_database():
                      ref_matches = refs_df[refs_df['chembl_id'].astype(str).str.strip().str.upper() == chembl_id.upper()]
 
                 # Strategy 2: Match via Name if ChEMBL didn't yield results or as supplementary
-                # Some rows in references.xlsx use the compound name in the 'chembl_id' column (based on user prompt)
                 if ref_matches.empty and not refs_df.empty and 'chembl_id' in refs_df.columns:
-                    # Try matching the 'names' or 'name' from metadata against the 'chembl_id' column in refs
-                    # This handles the case: "some structures are added by their names along with their references"
                     name_keys = ['names', 'name', 'molecule_name']
                     found_name = None
                     for nk in name_keys:
@@ -830,13 +836,17 @@ def render_database():
                     
                     if found_name:
                         # Case-insensitive match on the 'chembl_id' column in reference file
-                        # (The prompt implies names might be stored in that column or a similar identifier column)
                         ref_matches = refs_df[refs_df['chembl_id'].astype(str).str.strip().str.lower() == found_name.lower()]
+                        
+                # Strategy 3: Match via PubChem ID if no results yet
+                if ref_matches.empty and pubchem_id and not refs_df.empty and 'chembl_id' in refs_df.columns:
+                     ref_matches = refs_df[refs_df['chembl_id'].astype(str).str.strip() == pubchem_id]
 
                 # Combine results if needed, or just display what we found
                 if not ref_matches.empty:
                     # Deduplicate based on title or DOI to avoid showing same ref twice if strategies overlap
-                    ref_matches = ref_matches.drop_duplicates(subset=['title', 'doi'])
+                    # Note: Using subset columns that exist. Assuming 'title' exists.
+                    ref_matches = ref_matches.drop_duplicates(subset=['title'])
 
                     for idx, ref_row in ref_matches.iterrows():
                         ref_data = ref_row.to_dict()
