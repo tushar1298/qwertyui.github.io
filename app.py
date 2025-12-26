@@ -4,8 +4,8 @@ from supabase import create_client
 # --------------------------------------------------
 # CONFIG (use Streamlit Secrets)
 # --------------------------------------------------
-SUPABASE_URL = "https://heuzgnhlrumyfcfigoon.supabase.co"
-SUPABASE_KEY = "sb_secret_UuFsAopmAmHrdvHf6-mGBg_X0QNgMF5"
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 BUCKET_NAME = "codes"
 REMOTE_APP_FILENAME = "app.py"   # this is the REAL app in Supabase
