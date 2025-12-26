@@ -5,7 +5,7 @@ SUPABASE_URL = "https://heuzgnhlrumyfcfigoon.supabase.co"
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
 BUCKET_NAME = "codes"
-SOURCE_FILENAME = "app1.py"
+SOURCE_FILENAME = "app.py"
 
 @st.cache_resource
 def load_remote_app():
